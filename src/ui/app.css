@@ -24,6 +24,8 @@ body {
 .tela { padding: var(--espaco-4); }
 h2 { margin: 0 0 var(--espaco-2); font-size: var(--fonte-titulo); font-weight: var(--peso-forte); }
 
+:focus-visible { outline: 3px solid var(--cor-foco); outline-offset: 2px; }
+
 .botao {
   min-height: var(--toque);
   padding: 0 var(--espaco-4);
@@ -34,24 +36,31 @@ h2 { margin: 0 0 var(--espaco-2); font-size: var(--fonte-titulo); font-weight: v
   border: 1.5px solid var(--cor-linha);
   border-radius: var(--raio-pequeno);
 }
-:focus-visible { outline: 3px solid var(--cor-foco); outline-offset: 2px; }
+.botao-principal { color: var(--cor-faixa-texto); background: var(--cor-faixa); border-color: var(--cor-faixa); }
+.botao:disabled { opacity: 0.7; }
 
-.diagnostico {
-  margin-top: var(--espaco-5);
-  padding: var(--espaco-4);
+/* tela de senha */
+.lock { display: flex; flex-direction: column; gap: var(--espaco-2); padding-top: var(--espaco-4); }
+.lock .aviso {
+  margin: 0 0 var(--espaco-2);
+  padding: var(--espaco-3) var(--espaco-4);
   background: var(--cor-papel);
-  border-radius: var(--raio);
-}
-.diagnostico p { margin: 0 0 var(--espaco-3); color: var(--cor-tinta-suave); }
-.diagnostico .diagnostico-resultado { margin: var(--espaco-3) 0 0; color: var(--cor-tinta); }
-
-.botao-destaque { margin-bottom: var(--espaco-3); color: var(--cor-acao-texto); background: var(--cor-acao); border-color: var(--cor-acao); }
-.diagnostico-acoes { display: flex; flex-wrap: wrap; gap: var(--espaco-2); }
-.diagnostico-relatorio {
-  margin: var(--espaco-3) 0;
-  font: inherit;
-  font-size: var(--fonte-pequena);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  border-radius: var(--raio-pequeno);
   color: var(--cor-tinta);
 }
+.rotulo { margin-top: var(--espaco-2); font-weight: var(--peso-medio); }
+.campo {
+  width: 100%;
+  min-height: var(--toque);
+  padding: 0 var(--espaco-3);
+  font: inherit;
+  color: var(--cor-tinta);
+  background: var(--cor-fundo);
+  border: 1.5px solid var(--cor-tinta-suave);
+  border-radius: var(--raio-pequeno);
+}
+.mostrar { display: flex; align-items: center; gap: var(--espaco-3); min-height: var(--toque); }
+.mostrar input { width: 24px; height: 24px; margin: 0; }
+.erro { min-height: 1.45em; margin: 0; color: var(--cor-atrasada); font-weight: var(--peso-medio); }
+.lock .botao-principal { margin-top: var(--espaco-2); }
+.campo-escondido { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }

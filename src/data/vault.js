@@ -61,19 +61,38 @@ export function createVault(storage, { iterations = DEFAULT_ITERATIONS } = {}) {
 
 /**
  * Trava depois de um tempo sem uso. `touch()` reinicia o relógio.
- * @param {{timeoutMs: number, onLock: () => void, setTimer?: Function, clearTimer?: Function}} opts
+ * `check()` confere pelo horário se o tempo já passou: o celular pode congelar o app em segundo
+ * plano e o relógio do navegador não disparar, então a conferência roda quando o app volta.
+ * @param {{timeoutMs: number, onLock: () => void, setTimer?: Function, clearTimer?: Function, now?: () => number}} opts
  */
-export function createAutoLock({ timeoutMs, onLock, setTimer = setTimeout, clearTimer = clearTimeout }) {
+export function createAutoLock({ timeoutMs, onLock, setTimer = setTimeout, clearTimer = clearTimeout, now = Date.now }) {
   let id = null;
-  const cancel = () => {
+  let ativo = false;
+  let ultimoToque = 0;
+
+  const cancelar = () => {
     if (id !== null) clearTimer(id);
     id = null;
   };
+  const travar = () => {
+    cancelar();
+    ativo = false;
+    onLock();
+  };
+
   return {
     touch() {
-      cancel();
-      id = setTimer(onLock, timeoutMs);
+      cancelar();
+      ativo = true;
+      ultimoToque = now();
+      id = setTimer(travar, timeoutMs);
     },
-    stop: cancel,
+    check() {
+      if (ativo && now() - ultimoToque >= timeoutMs) travar();
+    },
+    stop() {
+      cancelar();
+      ativo = false;
+    },
   };
 }

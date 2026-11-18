@@ -71,3 +71,46 @@ test('touch cancela o relógio anterior e stop cancela o atual', () => {
   al.stop();
   assert.deepEqual(cancelados, [7, 7]);
 });
+
+test('check trava se o tempo passou, mesmo que o relógio do navegador não tenha disparado', () => {
+  let agora = 1000; let travou = 0;
+  const al = createAutoLock({ timeoutMs: 180000, onLock: () => travou++, setTimer: () => 1, clearTimer: () => {}, now: () => agora });
+  al.touch();
+  agora += 179999;
+  al.check();
+  assert.equal(travou, 0);
+  agora += 1;
+  al.check();
+  assert.equal(travou, 1);
+  al.check();
+  assert.equal(travou, 1, 'trava uma vez só');
+});
+
+test('check não faz nada antes de começar nem depois de parar', () => {
+  let agora = 0; let travou = 0;
+  const al = createAutoLock({ timeoutMs: 1000, onLock: () => travou++, setTimer: () => 1, clearTimer: () => {}, now: () => agora });
+  agora = 99999;
+  al.check();
+  al.touch();
+  al.stop();
+  agora = 999999;
+  al.check();
+  assert.equal(travou, 0);
+});
+
+test('depois que o relógio dispara, check não trava de novo, e touch recomeça', () => {
+  let agora = 0; let travou = 0; const timers = [];
+  const al = createAutoLock({ timeoutMs: 1000, onLock: () => travou++, setTimer: (fn) => { timers.push(fn); return timers.length; }, clearTimer: () => {}, now: () => agora });
+  al.touch();
+  timers.at(-1)();
+  agora = 5000;
+  al.check();
+  assert.equal(travou, 1);
+  al.touch();
+  agora = 5999;
+  al.check();
+  assert.equal(travou, 1);
+  agora = 6000;
+  al.check();
+  assert.equal(travou, 2);
+});

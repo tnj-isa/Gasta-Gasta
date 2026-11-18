@@ -17,6 +17,11 @@ export function createStore(vault) {
   };
 
   return {
+    /** Já existe uma senha criada neste aparelho? */
+    isInitialized() {
+      return vault.isInitialized();
+    },
+
     async create(password) {
       const state = emptyState();
       await vault.init(password, state);
@@ -28,6 +33,12 @@ export function createStore(vault) {
       current = null;
       current = await vault.unlock(password);
       return current;
+    },
+
+    /** Tranca o cofre e tira os dados da memória. */
+    lock() {
+      vault.lock();
+      current = null;
     },
 
     getState() {

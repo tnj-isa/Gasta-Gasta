@@ -75,3 +75,31 @@ test('replaceState troca tudo e persiste', async () => {
   const s = await store.load('senha-forte');
   assert.deepEqual(s.transactions.map(t => t.id), ['t9']);
 });
+
+test('isInitialized diz se a senha já foi criada', async () => {
+  const { store } = novo();
+  assert.equal(await store.isInitialized(), false);
+  await store.create('senha-forte');
+  assert.equal(await store.isInitialized(), true);
+});
+
+test('lock tranca o cofre e tira o estado da memória, e a senha volta a abrir', async () => {
+  const { vault, store } = novo();
+  await store.create('senha-forte');
+  await store.commit(s => addTransaction(s, tx('t1')));
+  store.lock();
+  assert.equal(vault.isUnlocked(), false);
+  assert.throws(() => store.getState());
+  const s = await store.load('senha-forte');
+  assert.equal(s.transactions.length, 1);
+});
+
+test('create num app que já tem senha é recusado e não apaga nada', async () => {
+  const { vault, store } = novo();
+  await store.create('senha-forte');
+  await store.commit(s => addTransaction(s, tx('t1')));
+  vault.lock();
+  await assert.rejects(store.create('outra-senha'));
+  const s = await store.load('senha-forte');
+  assert.equal(s.transactions.length, 1);
+});
