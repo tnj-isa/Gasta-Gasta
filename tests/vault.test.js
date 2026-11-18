@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { WrongPasswordError } from '../src/lib/crypto.js';
 import { memoryStorage } from '../src/data/storage.js';
-import { createVault, createAutoLock } from '../src/data/vault.js';
+import { createVault, createAutoLock, VaultConflictError } from '../src/data/vault.js';
 
 test('init, lock e unlock', async () => {
   const v = createVault(memoryStorage(), { iterations: 1000 });
@@ -49,6 +49,59 @@ test('init não sobrescreve um cofre que já existe', async () => {
   const antes = await storage.get('vault');
   await assert.rejects(v.init('outra-senha', { n: 2 }));
   assert.equal(await storage.get('vault'), antes);
+});
+
+/** Duas janelas do app (ex.: o ícone instalado e uma aba do Chrome) abertas e destravadas ao mesmo tempo. */
+async function duasJanelas() {
+  const storage = memoryStorage();
+  const a = createVault(storage, { iterations: 1000 });
+  await a.init('senha-forte', { n: 1 });
+  const b = createVault(storage, { iterations: 1000 });
+  await b.unlock('senha-forte');
+  return { storage, a, b };
+}
+
+test('duas janelas abertas: a que grava depois é recusada e não apaga o que a outra gravou', async () => {
+  const { a, b } = await duasJanelas();
+  await a.save({ n: 2 });
+  await assert.rejects(b.save({ n: 3 }), VaultConflictError);
+  b.lock();
+  assert.deepEqual(await b.unlock('senha-forte'), { n: 2 });
+});
+
+test('depois de recusada, a janela atrasada destrava de novo, vê o que a outra gravou e volta a gravar', async () => {
+  const { a, b } = await duasJanelas();
+  await a.save({ n: 2 });
+  await assert.rejects(b.save({ n: 3 }), VaultConflictError);
+  b.lock();
+  await b.unlock('senha-forte');
+  await b.save({ n: 4 });
+  a.lock();
+  assert.deepEqual(await a.unlock('senha-forte'), { n: 4 });
+});
+
+test('na mesma janela, gravar várias vezes seguidas continua funcionando', async () => {
+  const v = createVault(memoryStorage(), { iterations: 1000 });
+  await v.init('senha-forte', { n: 1 });
+  for (const n of [2, 3, 4]) await v.save({ n });
+  v.lock();
+  assert.deepEqual(await v.unlock('senha-forte'), { n: 4 });
+});
+
+test('duas janelas criando a senha ao mesmo tempo: só a primeira cria, a outra é recusada e não apaga nada', async () => {
+  const storage = memoryStorage();
+  const a = createVault(storage, { iterations: 1000 });
+  const b = createVault(storage, { iterations: 1000 });
+  const resultados = await Promise.allSettled([a.init('senha-forte', { n: 1 }), b.init('outra-senha', { n: 9 })]);
+  assert.deepEqual(resultados.map((r) => r.status).sort(), ['fulfilled', 'rejected']);
+  const venceu = resultados[0].status === 'fulfilled' ? ['senha-forte', { n: 1 }] : ['outra-senha', { n: 9 }];
+  assert.deepEqual(await createVault(storage, { iterations: 1000 }).unlock(venceu[0]), venceu[1]);
+});
+
+test('o conflito explica em português o que fazer', async () => {
+  const { a, b } = await duasJanelas();
+  await a.save({ n: 2 });
+  await assert.rejects(b.save({ n: 3 }), /outra janela.*abra o app de novo/i);
 });
 
 test('autoLock chama onLock depois do tempo e touch reinicia', () => {

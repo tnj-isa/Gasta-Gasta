@@ -8,7 +8,7 @@ import { renderBills } from './billsScreen.js';
 import { renderCards } from './cardsScreen.js';
 import { el } from './dom.js';
 import { renderEntry } from './entry.js';
-import { renderHome } from './home.js';
+import { definirMes, renderHome } from './home.js';
 import { renderLock } from './lock.js';
 import { renderPhoto } from './photo.js';
 import { renderRecurring } from './recurringScreen.js';
@@ -25,6 +25,7 @@ let faixa = null;
 let atual = null;
 let store = null;
 let autoLock = null;
+let navegacao = 0; // conta cada troca de tela: serve para uma tela saber que já saiu de cena (ex.: o app travou)
 
 function conferirNome(nome) {
   if (!SCREENS.includes(nome)) throw new RangeError(`Tela desconhecida: ${nome}`);
@@ -45,6 +46,7 @@ export function lockApp() {
   autoLock?.stop();
   autoLock = null;
   store.lock();
+  definirMes(null); // ao destravar, a tela principal abre no mês de hoje (o app pode ter ficado aberto na virada do mês)
   go('lock');
 }
 
@@ -95,8 +97,8 @@ renderers.set('lock', (container, { store: cofre, go: ir }) => {
 
 renderers.set('home', (container, api) => renderHome(container, api.store, api));
 
-renderers.set('photo', (container, { store: cofre, go: ir, faixa: topo }) => renderPhoto(
-  container, cofre, () => ir('home'), { faixa: topo }));
+renderers.set('photo', (container, { store: cofre, go: ir, faixa: topo, aindaNaTela }) => renderPhoto(
+  container, cofre, () => ir('home'), { faixa: topo, aindaNaTela }));
 
 renderers.set('settings', (container, api) => renderSettings(container, api.store, api));
 
@@ -125,11 +127,18 @@ export function go(nome, params = {}) {
   conferirNome(nome);
   if (!tela) throw new Error('Chame mount() antes de go()');
   atual = nome;
+  navegacao += 1;
+  const minhaNavegacao = navegacao;
   tela.replaceChildren();
   tela.className = 'tela';
   faixaPadrao();
   const render = renderers.get(nome);
-  if (render) render(tela, { go, store, faixa, params, lock: lockApp, rearmar: () => comecarAutoBloqueio(store.getState()) });
+  if (render) {
+    render(tela, {
+      go, store, faixa, params, lock: lockApp, rearmar: () => comecarAutoBloqueio(store.getState()),
+      aindaNaTela: () => minhaNavegacao === navegacao,
+    });
+  }
   else emConstrucao(tela);
 }
 

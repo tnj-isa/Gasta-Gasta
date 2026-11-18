@@ -1,6 +1,11 @@
 /**
- * Guarda texto por chave. Só `memoryStorage` existe por enquanto; o de IndexedDB vem na Tarefa 3.
- * @typedef {{get(key: string): Promise<string|undefined>, set(key: string, value: string): Promise<void>}} Storage
+ * Guarda texto por chave. `compareAndSet` só grava se o que está guardado ainda é o `expected` (`undefined` = nada
+ * guardado) e diz se gravou: é como duas janelas do app não pisam uma na outra.
+ * @typedef {{
+ *   get(key: string): Promise<string|undefined>,
+ *   set(key: string, value: string): Promise<void>,
+ *   compareAndSet(key: string, expected: string|undefined, value: string): Promise<boolean>,
+ * }} Storage
  */
 
 /**
@@ -31,6 +36,21 @@ export function indexedDbStorage(dbName = 'controle-financeiro') {
   return {
     get: (key) => run('readonly', (store) => store.get(key)),
     set: async (key, value) => { await run('readwrite', (store) => store.put(value, key)); },
+    /** Ler e gravar na mesma transação: o navegador não deixa outra janela entrar no meio. */
+    compareAndSet: async (key, expected, value) => {
+      const db = await open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('kv', 'readwrite');
+        const store = tx.objectStore('kv');
+        let gravou = false;
+        const lendo = store.get(key);
+        lendo.onsuccess = () => {
+          if (lendo.result === expected) { store.put(value, key); gravou = true; }
+        };
+        tx.oncomplete = () => resolve(gravou);
+        tx.onerror = tx.onabort = () => reject(tx.error);
+      });
+    },
   };
 }
 
@@ -40,5 +60,10 @@ export function memoryStorage() {
   return {
     async get(key) { return map.get(key); },
     async set(key, value) { map.set(key, value); },
+    async compareAndSet(key, expected, value) {
+      if (map.get(key) !== expected) return false;
+      map.set(key, value);
+      return true;
+    },
   };
 }

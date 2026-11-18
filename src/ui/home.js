@@ -23,6 +23,7 @@ export function mesAberto() {
   return mes;
 }
 
+/** `null` volta ao mês de hoje. */
 export function definirMes(chave) {
   mes = chave;
 }
@@ -135,9 +136,15 @@ export function renderHome(raiz, store, { faixa, go, lock }) {
       el('span', {}, 'Ganho depois dos custos do trabalho'),
       el('strong', {}, formatBRL(resumo.netAfterWorkCents))));
 
+  const erroAoApagar = el('p', { class: 'erro lancamentos-erro', role: 'alert' });
   const apagar = async (t) => {
     const conta = contaDoGasto(t);
-    await store.commit((s) => (conta === null ? removeTransactionWithCards(s, t.id) : unpayBill(s, conta)));
+    try {
+      await store.commit((s) => (conta === null ? removeTransactionWithCards(s, t.id) : unpayBill(s, conta)));
+    } catch (falha) {
+      erroAoApagar.textContent = `Não consegui apagar: ${falha.message}`;
+      return;
+    }
     go('home');
   };
   const lancamentos = monthTransactions(estado.transactions, chave);
@@ -157,6 +164,7 @@ export function renderHome(raiz, store, { faixa, go, lock }) {
     cartaoDosCartoes(estado, todayISO(), go) ?? '',
     el('section', {},
       el('h2', {}, `Lançamentos de ${nomeDoMes}`),
+      erroAoApagar,
       lancamentos.length
         ? el('ul', { class: 'lancamentos' }, lancamentos.map((t) => linhaDoLancamento(t, estado.categories, estado.cards, apagar)))
         : el('p', { class: 'vazio' }, 'Nada lançado neste mês.')),

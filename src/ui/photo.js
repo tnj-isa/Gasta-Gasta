@@ -57,11 +57,13 @@ export function toTransaction(draft) {
  * @param {HTMLElement} raiz
  * @param {{getState(): any, commit(mutator: (s: any) => any): Promise<any>}} store
  * @param {(salvo: object | null) => void} aoTerminar recebe o lançamento salvo, ou null se saiu sem salvar
- * @param {{faixa?: HTMLElement, ler?: typeof readReceiptText}} [opcoes]
+ * @param {{faixa?: HTMLElement, ler?: typeof readReceiptText, aindaNaTela?: () => boolean}} [opcoes]
+ *   `aindaNaTela` diz se esta tela ainda é a que aparece (se o app travou no meio da leitura, não é mais e nada é desenhado)
  */
-export function renderPhoto(raiz, store, aoTerminar, { faixa, ler = readReceiptText } = {}) {
+export function renderPhoto(raiz, store, aoTerminar, { faixa, ler = readReceiptText, aindaNaTela = () => true } = {}) {
   let url = null;
   let ativa = true;
+  const viva = () => ativa && aindaNaTela();
   const sair = (salvo) => {
     ativa = false;
     if (url) URL.revokeObjectURL(url);
@@ -93,6 +95,7 @@ export function renderPhoto(raiz, store, aoTerminar, { faixa, ler = readReceiptT
   };
 
   const ler1 = async (arquivo) => {
+    if (!viva()) return;
     url = URL.createObjectURL(arquivo);
     const barra = el('progress', { max: '100', value: '0', 'aria-label': 'Andamento da leitura' });
     raiz.replaceChildren(el('div', { class: 'foto' },
@@ -103,12 +106,13 @@ export function renderPhoto(raiz, store, aoTerminar, { faixa, ler = readReceiptT
     let lido = {};
     let falhou = false;
     try {
-      const texto = await ler(arquivo, (fracao) => { if (ativa) barra.value = Math.round(fracao * 100); });
+      const texto = await ler(arquivo, (fracao) => { if (viva()) barra.value = Math.round(fracao * 100); });
       lido = parseReceipt(texto);
     } catch {
       falhou = true;
     }
-    if (ativa) confirmar(lido, falhou);
+    if (viva()) confirmar(lido, falhou);
+    else if (url) { URL.revokeObjectURL(url); url = null; }
   };
 
   const aoEscolher = (evento) => {

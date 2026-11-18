@@ -1,6 +1,6 @@
 // Service worker: guarda o app no celular para abrir sem internet.
 // O número depois de "gasta-" é calculado por `npm run versao` (roda sozinho no `npm test`).
-const CACHE = 'gasta-beab8d09';
+const CACHE = 'gasta-95c1a985';
 
 // O leitor de notas (pasta vendor/, uns 13 MB) tem cache próprio: só é baixado de novo quando ele mesmo muda.
 const CACHE_LEITOR = 'gasta-leitor-ce487a08';
@@ -62,18 +62,22 @@ const LEITOR = [
   './vendor/tesseract/worker.min.js.LICENSE.txt',
 ];
 
+/** Pede o arquivo direto ao servidor, sem usar a cópia que o navegador guardou (que pode ser da versão anterior). */
+const direto = (caminho) => new Request(caminho, { cache: 'reload' });
+
 /** Guarda no cache do leitor só o que ainda não está lá. Se falhar (internet fraca), o app instala assim mesmo. */
 async function guardarLeitor() {
   const cache = await caches.open(CACHE_LEITOR);
   for (const caminho of LEITOR) {
-    if (!(await cache.match(caminho))) await cache.add(caminho);
+    if (!(await cache.match(caminho))) await cache.add(direto(caminho));
   }
 }
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     Promise.all([
-      caches.open(CACHE).then((cache) => cache.addAll(ASSETS)),
+      // O GitHub Pages deixa o navegador guardar cada arquivo por 10 minutos: sem "reload", uma versão nova podia guardar arquivos velhos.
+      caches.open(CACHE).then((cache) => cache.addAll(ASSETS.map(direto))),
       guardarLeitor().catch(() => {}),
     ]).then(() => self.skipWaiting()),
   );

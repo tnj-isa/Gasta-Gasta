@@ -62,6 +62,14 @@ test('o cache é cache primeiro e a versão no nome acompanha o conteúdo dos ar
   assert.match(texto, /n !== CACHE && n !== CACHE_LEITOR/, 'a limpeza não pode apagar o cache do leitor');
 });
 
+test('ao instalar, o service worker pede os arquivos direto ao servidor (nunca a cópia de 10 minutos do navegador)', () => {
+  const texto = ler('sw.js');
+  assert.match(texto, /new Request\(caminho, \{ cache: 'reload' \}\)/);
+  assert.match(texto, /cache\.addAll\(ASSETS\.map\(direto\)\)/, 'os arquivos do app entram no cache pelo pedido "reload"');
+  assert.match(texto, /cache\.add\(direto\(caminho\)\)/, 'os do leitor também');
+  assert.doesNotMatch(texto, /addAll\(ASSETS\)/);
+});
+
 test('o service worker usa só caminhos relativos, para funcionar em /Gasta-Gasta/', () => {
   const texto = ler('sw.js');
   assert.doesNotMatch(texto, /['"]\/[a-z]/i, 'caminho começando com / quebra em subpasta do GitHub Pages');
