@@ -1,4 +1,5 @@
 import { dateInMonth, monthKey, shiftMonth } from '../lib/dates.js';
+import { contaDoGasto } from './bills.js';
 import { addTransaction, newId, removeTransaction, upsertBills } from './model.js';
 
 /** @typedef {import('./model.js').Card} Card */
@@ -168,6 +169,30 @@ export function cardPurchaseFields({ method, cardId, installments = 1 }) {
 }
 
 /**
+ * O lançamento que o formulário de gasto ou entrada monta, novo (id novo) ou editado (o id do que já existe).
+ * Só levam o que vale para o tipo: entrada não tem categoria nem cartão, e descrição e local só entram se foram preenchidos.
+ * @param {{kind: 'expense'|'income', amountCents: number, date: string, scope: 'personal'|'work', categoryId?: string | null,
+ *   note?: string, merchant?: string, method?: string, cardId?: string, installments?: number}} campos
+ * @param {string} [id]
+ * @returns {Transaction}
+ * @throws {RangeError} se for compra no cartão sem cartão ou com parcelas inválidas
+ */
+export function transactionFromFields(campos, id = newId()) {
+  const gasto = campos.kind === 'expense';
+  return {
+    id,
+    kind: campos.kind,
+    amountCents: campos.amountCents,
+    date: campos.date,
+    scope: gasto ? campos.scope : 'personal',
+    ...(gasto ? { categoryId: campos.categoryId } : {}),
+    ...(gasto ? cardPurchaseFields(campos) : {}),
+    ...(campos.note ? { note: campos.note } : {}),
+    ...(campos.merchant ? { merchant: campos.merchant } : {}),
+  };
+}
+
+/**
  * Guarda um lançamento e, se foi compra no cartão, atualiza as faturas desse cartão, tudo no mesmo estado novo.
  * @param {State} s
  * @param {Transaction} t
@@ -188,6 +213,24 @@ export function removeTransactionWithCards(s, id) {
   const apagado = s.transactions.find((t) => t.id === id);
   const novo = removeTransaction(s, id);
   return apagado?.method === 'card' && apagado.cardId ? syncCardStatements(novo, apagado.cardId) : novo;
+}
+
+/**
+ * Troca um lançamento já salvo pelo novo (mesmo id, mesmo lugar da lista) e refaz as faturas dos cartões
+ * que ele tocava antes e dos que toca agora, tudo no mesmo estado novo. Fatura confirmada ou paga não muda.
+ * O gasto do pagamento de uma conta (`bill:<id>`) não se edita: o pagamento se desfaz e se faz de novo.
+ * @param {State} s
+ * @param {Transaction} t o lançamento já com as mudanças (precisa ter o id de um que existe)
+ * @returns {State}
+ * @throws {Error} se o lançamento não existe mais ou é o gasto do pagamento de uma conta
+ */
+export function updateTransactionWithCards(s, t) {
+  const antigo = s.transactions.find((x) => x.id === t.id);
+  if (!antigo) throw new Error('Esse lançamento não existe mais');
+  if (contaDoGasto(antigo) !== null) throw new Error('O gasto do pagamento de uma conta não se edita: desfaça o pagamento e pague de novo');
+  const trocado = { ...s, transactions: s.transactions.map((x) => (x.id === t.id ? t : x)) };
+  const cartoes = new Set([antigo, t].filter((x) => x.method === 'card' && x.cardId).map((x) => x.cardId));
+  return [...cartoes].reduce(syncCardStatements, trocado);
 }
 
 /**

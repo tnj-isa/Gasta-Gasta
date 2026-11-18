@@ -75,3 +75,35 @@ export function applyRecurring(s, today) {
     settings: { ...s.settings, recurringThrough: mes },
   };
 }
+
+/**
+ * Muda uma conta fixa: nome, valor, dia, de onde sai e categoria (o tipo não muda). Vale para os próximos meses.
+ * A conta do último mês criado, se ainda não foi paga, acompanha a mudança, porque ela é a "conta de agora" da regra.
+ * O que já foi pago e o que já foi lançado (gasto ou entrada) continuam como estavam; os meses que passaram também.
+ * @param {State} s
+ * @param {string} id
+ * @param {{title: string, amountCents: number, dayOfMonth: number, scope: 'personal'|'work', categoryId?: string}} campos
+ * @returns {State}
+ * @throws {Error} se a conta fixa não existe mais
+ */
+export function editRule(s, id, campos) {
+  const antiga = s.recurring.find((r) => r.id === id);
+  if (!antiga) throw new Error('Essa conta fixa não existe mais');
+  const entrada = antiga.kind === 'income';
+  const regra = {
+    id,
+    title: campos.title,
+    kind: antiga.kind,
+    amountCents: campos.amountCents,
+    dayOfMonth: campos.dayOfMonth,
+    scope: entrada ? 'personal' : campos.scope,
+    ...(!entrada && campos.categoryId ? { categoryId: campos.categoryId } : {}),
+    ...(antiga.through ? { through: antiga.through } : {}),
+  };
+  const recurring = s.recurring.map((r) => (r.id === id ? regra : r));
+  if (regra.kind !== 'bill' || !regra.through) return { ...s, recurring };
+  const idDaConta = `${id}:${regra.through}`;
+  const atual = itemDaRegra(regra, regra.through, dateInMonth(regra.through, regra.dayOfMonth));
+  const bills = s.bills.map((b) => (b.id === idDaConta && b.paidDate === null ? atual : b));
+  return { ...s, recurring, bills };
+}

@@ -1,21 +1,17 @@
-import { addTransactionWithCards, cardPurchaseFields, parseInstallments } from '../domain/cards.js';
-import { newId } from '../domain/model.js';
+import { addTransactionWithCards, parseInstallments, transactionFromFields, updateTransactionWithCards } from '../domain/cards.js';
 import { todayISO } from '../lib/dates.js';
-import { parseBRL } from '../lib/money.js';
+import { centavosParaCampo, parseBRL } from '../lib/money.js';
 import { el } from './dom.js';
 import { corDaCategoria } from './mosaico.js';
 import { grupo } from './opcoes.js';
-
-/** 3540 vira "35,40": o texto que vai dentro do campo de valor. */
-function centavosParaCampo(centavos) {
-  return `${Math.trunc(centavos / 100)},${String(centavos % 100).padStart(2, '0')}`;
-}
 
 /**
  * Tela de digitar um gasto ou uma entrada. Só o valor é obrigatório: categoria "Outros",
  * pessoal e a data de hoje já vêm marcados.
  * A tela da foto da nota usa esta mesma tela, já preenchida (`inicial`), só para gasto (`somenteGasto`),
  * com o valor lido em destaque (`destaque`) e montando o lançamento do seu jeito (`construir`).
+ * Para corrigir um lançamento que já existe, passe ele em `editar`: a tela abre com tudo preenchido
+ * e, ao salvar, troca o lançamento (mesmo id) e refaz as faturas do cartão.
  * @param {HTMLElement} raiz
  * @param {{getState(): any, commit(mutator: (s: any) => any): Promise<any>}} store
  * @param {(salvo: object | null) => void} aoTerminar recebe o lançamento salvo, ou null se cancelou
@@ -23,15 +19,20 @@ function centavosParaCampo(centavos) {
  *   kind?: 'expense'|'income', faixa?: HTMLElement, titulo?: string,
  *   inicial?: {amountCents?: number | null, date?: string, merchant?: string, categoryId?: string | null, scope?: 'personal'|'work'},
  *   somenteGasto?: boolean, mostrarLocal?: boolean, destaque?: string, antes?: Node,
- *   construir?: (campos: object) => object,
+ *   construir?: (campos: object) => object, editar?: import('../domain/model.js').Transaction,
  * }} [opcoes]
  */
 export function renderEntry(raiz, store, aoTerminar, {
-  kind = 'expense', faixa, titulo, inicial = {}, somenteGasto = false, mostrarLocal = false, destaque, antes, construir,
+  kind = 'expense', faixa, titulo, inicial: inicialDado = {}, somenteGasto = false, mostrarLocal: mostrarLocalDado = false,
+  destaque, antes, construir, editar,
 } = {}) {
   const categorias = store.getState().categories;
-  let tipo = kind;
-
+  const inicial = editar ? {
+    amountCents: editar.amountCents, date: editar.date, merchant: editar.merchant, categoryId: editar.categoryId,
+    scope: editar.scope, note: editar.note, method: editar.method, cardId: editar.cardId, installments: editar.installments,
+  } : inicialDado;
+  const mostrarLocal = mostrarLocalDado || Boolean(editar?.merchant);
+  let tipo = editar ? editar.kind : kind;
   const erro = el('p', { class: 'erro', role: 'alert' });
   const campoValor = el('input', {
     class: `campo campo-valor${destaque ? ' lido' : ''}`, id: 'valor', type: 'text', inputmode: 'decimal',
@@ -40,13 +41,14 @@ export function renderEntry(raiz, store, aoTerminar, {
     'aria-describedby': destaque ? 'valor-aviso' : null,
   });
   const campoData = el('input', { class: 'campo', id: 'data', type: 'date', value: inicial.date ?? todayISO() });
-  const campoNota = el('input', { class: 'campo', id: 'nota', type: 'text', autocomplete: 'off', maxlength: '80' });
+  const campoNota = el('input', { class: 'campo', id: 'nota', type: 'text', autocomplete: 'off', maxlength: '80', value: inicial.note || null });
   const campoLocal = el('input', { class: 'campo', id: 'local', type: 'text', autocomplete: 'off', maxlength: '60', value: inicial.merchant || null });
 
   const secaoGasto = el('div', { class: 'secao-gasto' });
   const atualizar = () => {
     secaoGasto.hidden = tipo !== 'expense';
-    faixa?.replaceChildren(el('h1', {}, titulo ?? (tipo === 'expense' ? 'Novo gasto' : 'Nova entrada')));
+    const padrao = editar ? (tipo === 'expense' ? 'Editar gasto' : 'Editar entrada') : (tipo === 'expense' ? 'Novo gasto' : 'Nova entrada');
+    faixa?.replaceChildren(el('h1', {}, titulo ?? padrao));
   };
 
   const tipoGrupo = grupo({
@@ -69,18 +71,21 @@ export function renderEntry(raiz, store, aoTerminar, {
   // "Como pagou" só aparece quando já existe um cartão cadastrado: quem não usa cartão não ganha toque nenhum a mais.
   const cartoes = store.getState().cards;
   const campoParcelas = el('input', {
-    class: 'campo', id: 'parcelas', type: 'text', inputmode: 'numeric', autocomplete: 'off', maxlength: '3', value: '1',
+    class: 'campo', id: 'parcelas', type: 'text', inputmode: 'numeric', autocomplete: 'off', maxlength: '3',
+    value: String(Number.isInteger(inicial.installments) && inicial.installments >= 1 ? inicial.installments : 1),
   });
+  // Ao editar, o cartão da compra já vem marcado (se ele ainda existe).
+  const cartaoDaCompra = inicial.method === 'card' ? cartoes.find((c) => c.id === inicial.cardId) : undefined;
   const cartaoGrupo = cartoes.length ? grupo({
-    nome: 'Cartão', inicial: cartoes[0].id, opcoes: cartoes.map((c) => ({ valor: c.id, rotulo: c.name })),
+    nome: 'Cartão', inicial: (cartaoDaCompra ?? cartoes[0]).id, opcoes: cartoes.map((c) => ({ valor: c.id, rotulo: c.name })),
   }) : null;
-  const secaoCartao = el('div', { class: 'secao-cartao', hidden: true },
+  const secaoCartao = el('div', { class: 'secao-cartao', hidden: !cartaoDaCompra },
     el('p', { class: 'rotulo' }, 'Qual cartão'), cartaoGrupo?.elemento,
     el('label', { class: 'rotulo', for: 'parcelas' }, 'Em quantas vezes?'),
     el('p', { class: 'aviso-valor' }, 'Digite 1 se pagou tudo de uma vez.'),
     campoParcelas);
   const metodoGrupo = cartoes.length ? grupo({
-    nome: 'Como pagou', dividido: true, inicial: 'now',
+    nome: 'Como pagou', dividido: true, inicial: cartaoDaCompra ? 'card' : 'now',
     opcoes: [{ valor: 'now', rotulo: 'Na hora' }, { valor: 'card', rotulo: 'No cartão' }],
     aoMudar: (valor) => {
       secaoCartao.hidden = valor !== 'card';
@@ -136,21 +141,18 @@ export function renderEntry(raiz, store, aoTerminar, {
       merchant: campoLocal.value.trim(),
       ...(noCartao ? { method: 'card', cardId: cartaoGrupo.valor(), installments: parcelas } : {}),
     };
-    const lancamento = construir ? construir(campos) : {
-      id: newId(),
-      kind: campos.kind,
-      amountCents,
-      date: campos.date,
-      scope: campos.scope,
-      ...(tipo === 'expense' ? { categoryId: campos.categoryId } : {}),
-      ...cardPurchaseFields(campos),
-      ...(nota ? { note: nota } : {}),
-    };
+    let lancamento;
+    try {
+      lancamento = construir ? construir(campos) : transactionFromFields(campos, editar?.id);
+    } catch (falha) {
+      erro.textContent = falha.message;
+      return;
+    }
     salvando = true;
     botaoSalvar.disabled = true;
     botaoSalvar.textContent = 'Salvando…';
     try {
-      await store.commit((s) => addTransactionWithCards(s, lancamento));
+      await store.commit((s) => (editar ? updateTransactionWithCards(s, lancamento) : addTransactionWithCards(s, lancamento)));
       aoTerminar(lancamento);
     } catch (falha) {
       erro.textContent = `Não consegui salvar: ${falha.message}`;

@@ -28,3 +28,13 @@ export function parseBRL(input) {
 export function formatBRL(cents) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100);
 }
+
+/**
+ * 3540 vira "35,40": o texto que vai dentro de um campo de valor (sem "R$" nem pontos de milhar),
+ * para a pessoa corrigir o valor que já existe. `parseBRL` lê esse texto de volta.
+ * @param {number} cents
+ * @returns {string}
+ */
+export function centavosParaCampo(cents) {
+  return `${Math.trunc(cents / 100)},${String(cents % 100).padStart(2, '0')}`;
+}

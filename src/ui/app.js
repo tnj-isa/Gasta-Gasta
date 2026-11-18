@@ -108,8 +108,19 @@ renderers.set('cards', (container, api) => renderCards(container, api.store, api
 
 renderers.set('recurring', (container, api) => renderRecurring(container, api.store, api));
 
-renderers.set('entry', (container, { store: cofre, go: ir, faixa: topo, params }) => renderEntry(
-  container, cofre, () => ir('home'), { kind: params.kind, faixa: topo }));
+renderers.set('entry', (container, { store: cofre, go: ir, faixa: topo, params }) => {
+  const voltar = () => ir(params.de ?? 'home');
+  const editar = params.editar ? cofre.getState().transactions.find((t) => t.id === params.editar) : undefined;
+  if (params.editar && !editar) {
+    // Outra janela do app pode ter apagado o lançamento no meio do caminho.
+    topo.replaceChildren(el('h1', {}, 'Editar'));
+    container.append(
+      el('p', { class: 'erro', role: 'alert' }, 'Esse lançamento não existe mais.'),
+      el('button', { class: 'botao botao-largo', type: 'button', onclick: voltar }, 'Voltar'));
+    return;
+  }
+  renderEntry(container, cofre, voltar, { kind: params.kind, faixa: topo, editar });
+});
 
 function emConstrucao(container) {
   container.append(el('p', {}, 'Esta tela ainda está sendo construída.'));

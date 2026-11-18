@@ -8,6 +8,7 @@ import { botaoDeIcone, el } from './dom.js';
 import { etiquetaDaConta, quandoVence } from './faturasTexto.js';
 import { corDaCategoria } from './mosaico.js';
 import { grupo } from './opcoes.js';
+import { perguntarDataDoPagamento } from './pagamento.js';
 
 const ICONE_VOLTAR = 'M15 5l-7 7 7 7';
 const PAGAS_VISIVEIS = 10;
@@ -216,9 +217,18 @@ export function renderBills(raiz, store, { faixa, go }) {
           class: 'botao', type: 'button', 'aria-label': `Desfazer pagamento: ${contexto}`,
           onclick: (e) => { e.currentTarget.disabled = true; mudar((s) => unpayBill(s, conta.id), `Pagamento de ${conta.title} desfeito. A conta voltou para "a pagar".`); },
         }, 'Desfazer');
-      caixa.replaceChildren(principal,
-        el('button', { class: 'botao botao-discreto', type: 'button', 'aria-label': `Apagar: ${contexto}`, onclick: perguntar }, 'Apagar'));
+      caixa.replaceChildren(...[
+        principal,
+        conta.paidDate === null ? el('button', {
+          class: 'botao', type: 'button', 'aria-label': `Pagar em outro dia: ${contexto}`, onclick: outroDia,
+        }, 'Outro dia') : null,
+        el('button', { class: 'botao botao-discreto', type: 'button', 'aria-label': `Apagar: ${contexto}`, onclick: perguntar }, 'Apagar'),
+      ].filter(Boolean));
     };
+    const outroDia = () => perguntarDataDoPagamento(caixa, {
+      hoje: todayISO(), contexto, aoCancelar: normal,
+      aoConfirmar: (data) => mudar((s) => payBill(s, conta.id, data), `${conta.title} marcada como paga em ${shortDate(data)}. O gasto entrou nessa data.`),
+    });
     const perguntar = () => {
       const apagar = (ids, texto) => () => mudar((s) => deleteBills(s, ids), texto);
       const cancelar = el('button', { class: 'botao', type: 'button', onclick: normal }, 'Cancelar');

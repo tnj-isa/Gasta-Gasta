@@ -4,17 +4,13 @@ import {
 } from '../domain/cards.js';
 import { upsertCard } from '../domain/model.js';
 import { shortDate, todayISO } from '../lib/dates.js';
-import { formatBRL, parseBRL } from '../lib/money.js';
+import { centavosParaCampo, formatBRL, parseBRL } from '../lib/money.js';
 import { linhaDaConta } from './billsScreen.js';
 import { botaoDeIcone, el } from './dom.js';
+import { perguntarDataDoPagamento } from './pagamento.js';
 
 const ICONE_VOLTAR = 'M15 5l-7 7 7 7';
 const PAGAS_VISIVEIS = 3;
-
-/** 3540 vira "35,40": o texto que vai dentro do campo de valor. */
-function centavosParaCampo(centavos) {
-  return `${Math.trunc(centavos / 100)},${String(centavos % 100).padStart(2, '0')}`;
-}
 
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 
@@ -172,9 +168,14 @@ export function renderCards(raiz, store, { faixa, go }) {
             mudar((s) => payBill(s, fatura.id, todayISO()), 'Fatura paga. Isso não vira gasto novo: as compras já estão lançadas.');
           },
         }, 'Marcar como paga'),
+        el('button', { class: 'botao', type: 'button', 'aria-label': `Pagar em outro dia: ${contexto}`, onclick: outroDia }, 'Outro dia'),
         apagavel ? botaoApagar() : null,
       ].filter(Boolean));
     };
+    const outroDia = () => perguntarDataDoPagamento(caixa, {
+      hoje: todayISO(), contexto, aoCancelar: normal,
+      aoConfirmar: (data) => mudar((s) => payBill(s, fatura.id, data), `Fatura paga em ${shortDate(data)}. Isso não vira gasto novo: as compras já estão lançadas.`),
+    });
     const perguntarApagar = () => caixa.replaceChildren(
       el('span', { class: 'confirmar' }, 'Apagar esta fatura? Se ainda há compras nela, ela volta como prevista, com a soma das compras. As compras não são apagadas.'),
       el('button', { class: 'botao', type: 'button', onclick: normal }, 'Cancelar'),
@@ -222,9 +223,14 @@ export function renderCards(raiz, store, { faixa, go }) {
     const vezes = t.installments > 1 ? `, em ${t.installments}x` : '';
     const ano = t.date.slice(0, 4) === todayISO().slice(0, 4) ? '' : `/${t.date.slice(0, 4)}`;
     const acoes = el('div', { class: 'lancamento-acoes' });
-    const normal = () => acoes.replaceChildren(el('button', {
-      class: 'botao botao-discreto', type: 'button', 'aria-label': `Apagar compra: ${titulo}, ${formatBRL(t.amountCents)}`, onclick: perguntar,
-    }, 'Apagar'));
+    const normal = () => acoes.replaceChildren(
+      el('button', {
+        class: 'botao botao-discreto', type: 'button', 'aria-label': `Editar compra: ${titulo}, ${formatBRL(t.amountCents)}`,
+        onclick: () => go('entry', { editar: t.id, de: 'cards' }),
+      }, 'Editar'),
+      el('button', {
+        class: 'botao botao-discreto', type: 'button', 'aria-label': `Apagar compra: ${titulo}, ${formatBRL(t.amountCents)}`, onclick: perguntar,
+      }, 'Apagar'));
     const perguntar = () => acoes.replaceChildren(
       el('span', { class: 'confirmar' }, 'Apagar esta compra? Ela sai do "Saiu" e das faturas.'),
       el('button', { class: 'botao', type: 'button', onclick: normal }, 'Cancelar'),

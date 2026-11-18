@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyRecurring, MAX_MESES_ATRASADOS } from '../src/domain/recurring.js';
+import { applyRecurring, editRule, MAX_MESES_ATRASADOS } from '../src/domain/recurring.js';
 import { payBill } from '../src/domain/bills.js';
 import { emptyState, upsertRule } from '../src/domain/model.js';
 
@@ -164,4 +164,82 @@ test('regra anotada num mês que ainda não chegou (relógio mudado) não cria n
   const s = applyRecurring(upsertRule(emptyState(), futura), '2027-02-10');
   assert.equal(s.bills.length, 0);
   assert.equal(s.recurring[0].through, '2030-01');
+});
+
+// ---- editar uma conta fixa ----
+
+test('editar muda a regra e guarda a anotação do último mês criado (o passado não é refeito)', () => {
+  const s = applyRecurring(base, '2027-02-10');
+  const novo = editRule(s, 'r1', { title: 'Internet fibra', amountCents: 13000, dayOfMonth: 10, scope: 'work', categoryId: 'casa' });
+  assert.deepEqual(novo.recurring[0], {
+    id: 'r1', title: 'Internet fibra', kind: 'bill', amountCents: 13000, dayOfMonth: 10, scope: 'work', categoryId: 'casa', through: '2027-02',
+  });
+  assert.equal(novo.bills.length, 1, 'editar não cria conta nova sozinho');
+});
+
+test('editar não troca o tipo nem o id da regra, mesmo que venham nos campos', () => {
+  const s = applyRecurring(base, '2027-02-10');
+  const novo = editRule(s, 'r1', { id: 'outro', kind: 'income', title: 'X', amountCents: 100, dayOfMonth: 5, scope: 'personal' });
+  assert.equal(novo.recurring[0].id, 'r1');
+  assert.equal(novo.recurring[0].kind, 'bill');
+});
+
+test('a conta deste mês que ainda não foi paga acompanha a edição (nome, valor, dia, de onde sai e categoria)', () => {
+  const s = applyRecurring(base, '2027-02-10');
+  const novo = editRule(s, 'r1', { title: 'Internet fibra', amountCents: 13000, dayOfMonth: 10, scope: 'work', categoryId: 'casa' });
+  assert.deepEqual(novo.bills[0], {
+    id: 'r1:2027-02', title: 'Internet fibra', kind: 'boleto', scope: 'work', amountCents: 13000,
+    dueDate: '2027-02-10', paidDate: null, categoryId: 'casa',
+  });
+});
+
+test('a conta deste mês que já foi paga não muda, nem o gasto do pagamento', () => {
+  let s = applyRecurring(base, '2027-02-10');
+  s = payBill(s, 'r1:2027-02', '2027-02-12');
+  const antes = JSON.stringify([s.bills, s.transactions]);
+  const novo = editRule(s, 'r1', { title: 'Internet fibra', amountCents: 13000, dayOfMonth: 10, scope: 'personal' });
+  assert.equal(JSON.stringify([novo.bills, novo.transactions]), antes);
+  assert.equal(novo.recurring[0].amountCents, 13000, 'mas os próximos meses já usam a regra nova');
+});
+
+test('contas de meses que já passaram continuam como estavam', () => {
+  let s = applyRecurring(base, '2027-02-10');
+  s = applyRecurring(s, '2027-04-02');
+  const velhas = s.bills.filter((b) => b.id !== 'r1:2027-04').map((b) => ({ ...b }));
+  const novo = editRule(s, 'r1', { title: 'Nova', amountCents: 1, dayOfMonth: 1, scope: 'personal' });
+  assert.deepEqual(novo.bills.filter((b) => b.id !== 'r1:2027-04'), velhas);
+  assert.equal(novo.bills.find((b) => b.id === 'r1:2027-04').amountCents, 1);
+});
+
+test('o próximo mês nasce com os dados da regra editada', () => {
+  let s = applyRecurring(base, '2027-02-10');
+  s = editRule(s, 'r1', { title: 'Nova', amountCents: 15000, dayOfMonth: 8, scope: 'personal', categoryId: 'casa' });
+  s = applyRecurring(s, '2027-03-02');
+  assert.deepEqual(s.bills.find((b) => b.id === 'r1:2027-03'), {
+    id: 'r1:2027-03', title: 'Nova', kind: 'boleto', scope: 'personal', amountCents: 15000, dueDate: '2027-03-08', paidDate: null, categoryId: 'casa',
+  });
+});
+
+test('gasto fixo: o lançamento deste mês não é reescrito (para mudar, edita-se o lançamento)', () => {
+  let s = applyRecurring(upsertRule(emptyState(), academia), '2026-11-18');
+  const antes = JSON.stringify(s.transactions);
+  s = editRule(s, 'r3', { title: 'Academia nova', amountCents: 12000, dayOfMonth: 10, scope: 'personal', categoryId: 'saude' });
+  assert.equal(JSON.stringify(s.transactions), antes);
+  assert.equal(s.recurring[0].title, 'Academia nova');
+});
+
+test('entrada fixa fica sem categoria, e o escopo continua pessoal', () => {
+  const s = editRule(upsertRule(emptyState(), salario), 'r2', { title: 'Fixo novo', amountCents: 120000, dayOfMonth: 5, scope: 'work', categoryId: 'casa' });
+  assert.deepEqual(s.recurring[0], { id: 'r2', title: 'Fixo novo', kind: 'income', amountCents: 120000, dayOfMonth: 5, scope: 'personal' });
+});
+
+test('editar uma regra que não existe mais avisa', () => {
+  assert.throws(() => editRule(base, 'sumiu', { title: 'X', amountCents: 1, dayOfMonth: 1, scope: 'personal' }), /não existe mais/);
+});
+
+test('editar não mexe no estado que recebe', () => {
+  const s = applyRecurring(base, '2027-02-10');
+  const antes = JSON.stringify(s);
+  editRule(s, 'r1', { title: 'Nova', amountCents: 1, dayOfMonth: 1, scope: 'work' });
+  assert.equal(JSON.stringify(s), antes);
 });

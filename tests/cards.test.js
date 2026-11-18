@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   addTransactionWithCards, buildCard, cardPurchaseFields, confirmStatement, faturasDosCartoes, MAX_PARCELAS, parseInstallments, predictedStatements,
-  removeTransactionWithCards, statementFor, syncCardStatements,
+  removeTransactionWithCards, statementFor, syncCardStatements, transactionFromFields, updateTransactionWithCards,
 } from '../src/domain/cards.js';
 import { payBill } from '../src/domain/bills.js';
 import { addTransaction, emptyState, upsertBills, upsertCard } from '../src/domain/model.js';
@@ -528,4 +528,143 @@ test('removeStatement só apaga fatura de cartão: boleto e id desconhecido não
   const s = doisCartoes();
   assert.equal(removeStatement(s, 'b1'), s);
   assert.equal(removeStatement(s, 'nao-existe'), s);
+});
+
+// ---- editar um lançamento já salvo ----
+
+const comAzul = () => upsertCard(comRoxo(), { id: 'c2', name: 'Azul', closingDay: 28, dueDay: 5 });
+const comUmaCompra = () => addTransactionWithCards(comRoxo(), compraNoRoxo());
+
+test('editar troca o lançamento de mesmo id, no mesmo lugar da lista, sem mexer nos outros', () => {
+  let s = addTransaction(emptyState(), { id: 'a', kind: 'expense', amountCents: 100, date: '2026-11-01', scope: 'personal', categoryId: 'outros' });
+  s = addTransaction(s, { id: 'b', kind: 'expense', amountCents: 200, date: '2026-11-02', scope: 'personal', categoryId: 'outros' });
+  s = addTransaction(s, { id: 'c', kind: 'income', amountCents: 300, date: '2026-11-03', scope: 'personal' });
+  const novo = updateTransactionWithCards(s, { id: 'b', kind: 'expense', amountCents: 250, date: '2026-11-04', scope: 'work', categoryId: 'mercado', note: 'feira' });
+  assert.deepEqual(novo.transactions.map((t) => t.id), ['a', 'b', 'c']);
+  assert.deepEqual(novo.transactions[1], { id: 'b', kind: 'expense', amountCents: 250, date: '2026-11-04', scope: 'work', categoryId: 'mercado', note: 'feira' });
+  assert.deepEqual(novo.transactions[0], s.transactions[0]);
+  assert.deepEqual(novo.transactions[2], s.transactions[2]);
+});
+
+test('editar não mexe no estado que recebe', () => {
+  const s = comUmaCompra();
+  const antes = JSON.stringify(s);
+  updateTransactionWithCards(s, compraNoRoxo({ amountCents: 30000 }));
+  assert.equal(JSON.stringify(s), antes);
+});
+
+test('editar o valor de uma compra no cartão refaz as faturas previstas dela', () => {
+  const s = updateTransactionWithCards(comUmaCompra(), compraNoRoxo({ amountCents: 30000 }));
+  assert.deepEqual(faturasDo(s).map((b) => [b.dueDate, b.amountCents]),
+    [['2026-12-12', 10000], ['2027-01-12', 10000], ['2027-02-12', 10000]]);
+  assert.equal(s.transactions.length, 1);
+});
+
+test('editar a data da compra para antes do fechamento move as faturas e não deixa a antiga para trás', () => {
+  const s = updateTransactionWithCards(comUmaCompra(), compraNoRoxo({ date: '2026-11-05' }));
+  assert.deepEqual(faturasDo(s).map((b) => b.dueDate), ['2026-11-12', '2026-12-12', '2027-01-12']);
+  assert.equal(s.bills.length, 3);
+});
+
+test('editar as parcelas de 3 para 1 deixa só uma fatura', () => {
+  const s = updateTransactionWithCards(comUmaCompra(), compraNoRoxo({ installments: 1 }));
+  assert.deepEqual(faturasDo(s).map((b) => [b.dueDate, b.amountCents]), [['2026-12-12', 10000]]);
+});
+
+test('trocar de cartão refaz as faturas dos dois: o antigo perde, o novo ganha', () => {
+  const s0 = addTransactionWithCards(comAzul(), compraNoRoxo());
+  const s = updateTransactionWithCards(s0, compraNoRoxo({ cardId: 'c2', installments: 2 }));
+  assert.deepEqual(faturasDo(s, 'c1'), []);
+  assert.deepEqual(faturasDo(s, 'c2').map((b) => [b.dueDate, b.amountCents]), [['2026-12-05', 5000], ['2027-01-05', 5000]]);
+});
+
+test('passar a compra do cartão para "na hora" tira as faturas previstas dela', () => {
+  const { method, cardId, installments, ...naHora } = compraNoRoxo();
+  const s = updateTransactionWithCards(comUmaCompra(), naHora);
+  assert.deepEqual(s.bills, []);
+  assert.equal(s.transactions[0].method, undefined);
+});
+
+test('passar um gasto "na hora" para o cartão cria as faturas previstas', () => {
+  const { method, cardId, installments, ...naHora } = compraNoRoxo();
+  const s0 = addTransactionWithCards(comRoxo(), naHora);
+  assert.deepEqual(s0.bills, []);
+  const s = updateTransactionWithCards(s0, compraNoRoxo());
+  assert.equal(faturasDo(s).length, 3);
+});
+
+test('virar entrada também tira as faturas da compra', () => {
+  const s = updateTransactionWithCards(comUmaCompra(), { id: 't1', kind: 'income', amountCents: 10000, date: '2026-11-06', scope: 'personal' });
+  assert.deepEqual(s.bills, []);
+  assert.equal(s.transactions[0].kind, 'income');
+});
+
+test('fatura já confirmada ou paga não muda quando a compra é editada (o que você pagou de verdade não se reescreve)', () => {
+  const inicial = comUmaCompra();
+  let s = confirmStatement(inicial, faturasDo(inicial)[0].id, 95000);
+  s = payBill(s, faturasDo(s)[1].id, '2027-01-12');
+  const antes = faturasDo(s).map((b) => ({ ...b }));
+  assert.equal(antes[0].confirmed, true);
+  assert.equal(antes[1].paidDate, '2027-01-12');
+  s = updateTransactionWithCards(s, compraNoRoxo({ amountCents: 60000 }));
+  const depois = faturasDo(s);
+  assert.deepEqual(depois[0], antes[0]);
+  assert.deepEqual(depois[1], antes[1]);
+  assert.equal(depois[2].amountCents, 20000, 'a prevista acompanha a compra nova');
+});
+
+test('editar uma compra que não é de cartão não mexe nas faturas dos cartões', () => {
+  let s = addTransactionWithCards(comUmaCompra(), { id: 'p1', kind: 'expense', amountCents: 500, date: '2026-11-10', scope: 'personal', categoryId: 'mercado' });
+  const antes = JSON.stringify(s.bills);
+  s = updateTransactionWithCards(s, { id: 'p1', kind: 'expense', amountCents: 900, date: '2026-11-11', scope: 'personal', categoryId: 'lazer' });
+  assert.equal(JSON.stringify(s.bills), antes);
+  assert.equal(s.transactions.find((t) => t.id === 'p1').amountCents, 900);
+});
+
+test('editar o pagamento de uma conta não vale: desfaz o pagamento e paga de novo', () => {
+  const conta = { id: 'k1', title: 'Luz', kind: 'boleto', scope: 'personal', amountCents: 8000, dueDate: '2026-11-20', paidDate: null };
+  const s = payBill(upsertBills(emptyState(), [conta]), 'k1', '2026-11-18');
+  assert.throws(() => updateTransactionWithCards(s, { ...s.transactions[0], amountCents: 1 }), /pagamento/i);
+  assert.equal(s.transactions[0].amountCents, 8000);
+});
+
+test('editar um lançamento que não existe mais avisa, em vez de fingir que salvou', () => {
+  assert.throws(() => updateTransactionWithCards(comUmaCompra(), compraNoRoxo({ id: 'sumiu' })), /não existe mais/);
+});
+
+// ---- o lançamento que o formulário monta (novo ou editado) ----
+
+const camposDeGasto = (extra = {}) => ({
+  kind: 'expense', amountCents: 3540, date: '2026-11-18', scope: 'personal', categoryId: 'mercado', note: '', merchant: '', ...extra,
+});
+
+test('gasto simples: só os campos que valem, e um id novo', () => {
+  const t = transactionFromFields(camposDeGasto());
+  assert.match(t.id, /^[0-9a-f-]{36}$/);
+  const { id, ...resto } = t;
+  assert.deepEqual(resto, { kind: 'expense', amountCents: 3540, date: '2026-11-18', scope: 'personal', categoryId: 'mercado' });
+});
+
+test('ao editar, o id é o do lançamento que já existe', () => {
+  assert.equal(transactionFromFields(camposDeGasto(), 'abc').id, 'abc');
+});
+
+test('descrição e local entram só se foram preenchidos', () => {
+  const { id, ...com } = transactionFromFields(camposDeGasto({ note: 'feira', merchant: 'Mercadão' }), 'x');
+  assert.deepEqual(com, { kind: 'expense', amountCents: 3540, date: '2026-11-18', scope: 'personal', categoryId: 'mercado', note: 'feira', merchant: 'Mercadão' });
+});
+
+test('entrada não leva categoria, cartão nem escopo de trabalho, mesmo que os campos venham preenchidos', () => {
+  const { id, ...t } = transactionFromFields(camposDeGasto({ kind: 'income', scope: 'work', method: 'card', cardId: 'c1', installments: 3 }), 'x');
+  assert.deepEqual(t, { kind: 'income', amountCents: 3540, date: '2026-11-18', scope: 'personal' });
+});
+
+test('compra no cartão leva cartão e parcelas', () => {
+  const { id, ...t } = transactionFromFields(camposDeGasto({ method: 'card', cardId: 'c1', installments: 3 }), 'x');
+  assert.deepEqual(t, { kind: 'expense', amountCents: 3540, date: '2026-11-18', scope: 'personal', categoryId: 'mercado', method: 'card', cardId: 'c1', installments: 3 });
+});
+
+test('compra no cartão sem cartão ou com parcelas ruins não é montada', () => {
+  assert.throws(() => transactionFromFields(camposDeGasto({ method: 'card', installments: 2 })), /cartão/i);
+  assert.throws(() => transactionFromFields(camposDeGasto({ method: 'card', cardId: 'c1', installments: 0 })), RangeError);
 });

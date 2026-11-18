@@ -159,6 +159,20 @@ export function seriesOf(bills, bill) {
 
 
 /**
+ * Confere a data que a pessoa escolheu para um pagamento: tem que ser uma data de verdade e não pode estar
+ * no futuro (um ano digitado errado, por exemplo, mandaria o gasto para um mês que ainda não existe).
+ * Devolve a mensagem de erro, ou null se está tudo certo.
+ * @param {string} data "AAAA-MM-DD"
+ * @param {string} hoje "AAAA-MM-DD"
+ * @returns {string | null}
+ */
+export function validarDataDoPagamento(data, hoje) {
+  if (!dataValida(data)) return 'Escolha a data do pagamento.';
+  if (data > hoje) return 'A data do pagamento não pode estar no futuro.';
+  return null;
+}
+
+/**
  * Marca a conta como paga e lança o gasto dela, tudo de uma vez (para nunca ficar um sem o outro).
  * Conta que não existe ou que já está paga não muda nada, então um toque repetido não duplica o gasto.
  * @param {State} s

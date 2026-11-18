@@ -282,3 +282,6 @@ h2 { margin: 0 0 var(--espaco-2); font-size: var(--fonte-titulo); font-weight: v
 .secao-fixa[hidden] { display: none; }
 .secao-fixa { display: flex; flex-direction: column; gap: var(--espaco-1); }
 .tela > .config-botoes > .botao-largo { grid-column: 1 / -1; }
+
+/* editar conta fixa: o tipo aparece, mas não muda */
+.tipo-fixo { margin: 0; font-weight: var(--peso-forte); }

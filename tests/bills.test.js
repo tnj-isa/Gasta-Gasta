@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   billToExpense, createBoleto, createInstallmentSeries, deleteBills, markPaid, markUnpaid, payBill, pendingTotals,
-  contaDoGasto, seriesOf, unpayBill, upcomingBills,
+  contaDoGasto, seriesOf, unpayBill, upcomingBills, validarDataDoPagamento,
 } from '../src/domain/bills.js';
 import { addTransaction, emptyState, removeTransaction, upsertBills } from '../src/domain/model.js';
 import { monthKey } from '../src/lib/dates.js';
@@ -285,4 +285,31 @@ test('reconhece o gasto que veio do pagamento de uma conta e diz qual conta é',
   assert.equal(contaDoGasto(s.transactions[0]), s0.bills[0].id);
   assert.equal(contaDoGasto({ id: 't1' }), null);
   assert.equal(contaDoGasto({ id: 'xbill:1' }), null);
+});
+
+// ---- pagar em outra data ----
+
+test('pagar em outra data: o gasto entra no dia que você pagou, e conta no mês dele', () => {
+  const conta = { id: 'k1', title: 'Luz', kind: 'boleto', scope: 'personal', amountCents: 8000, dueDate: '2026-11-20', paidDate: null };
+  const s = payBill(upsertBills(emptyState(), [conta]), 'k1', '2026-10-28');
+  assert.equal(s.bills[0].paidDate, '2026-10-28');
+  assert.equal(s.transactions[0].date, '2026-10-28');
+  assert.equal(monthKey(s.transactions[0].date), '2026-10');
+});
+
+test('data do pagamento: vale hoje e qualquer dia do passado', () => {
+  assert.equal(validarDataDoPagamento('2026-11-18', '2026-11-18'), null);
+  assert.equal(validarDataDoPagamento('2026-11-17', '2026-11-18'), null);
+  assert.equal(validarDataDoPagamento('2025-01-31', '2026-11-18'), null);
+});
+
+test('data do pagamento: não vale amanhã nem data no futuro (provável erro de digitação do ano)', () => {
+  assert.match(validarDataDoPagamento('2026-11-19', '2026-11-18'), /futuro/);
+  assert.match(validarDataDoPagamento('2027-11-17', '2026-11-18'), /futuro/);
+});
+
+test('data do pagamento: vazia ou impossível pede para escolher a data', () => {
+  for (const ruim of ['', '18/11/2026', '2026-02-30', '2026-13-01', undefined, null]) {
+    assert.match(validarDataDoPagamento(ruim, '2026-11-18'), /Escolha/, String(ruim));
+  }
 });

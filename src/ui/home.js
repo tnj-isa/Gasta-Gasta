@@ -62,7 +62,7 @@ function mosaico(resumo, categorias) {
  * Gasto que veio do pagamento de uma conta não se apaga solto (a conta ficaria "paga" sem gasto):
  * o botão vira "Desfazer pagamento", que devolve a conta para "a pagar".
  */
-function linhaDoLancamento(t, categorias, cartoes, aoApagar) {
+function linhaDoLancamento(t, categorias, cartoes, aoApagar, aoEditar) {
   const pagamento = contaDoGasto(t) !== null;
   const rotulo = pagamento ? 'Desfazer pagamento' : 'Apagar';
   const nomeCategoria = categorias.find((c) => c.id === t.categoryId)?.name ?? 'Outros';
@@ -74,8 +74,13 @@ function linhaDoLancamento(t, categorias, cartoes, aoApagar) {
     ? shortDate(t.date)
     : `${shortDate(t.date)}, ${nomeCategoria}${nomeCartao ? `, ${nomeCartao}${parcelas}` : ''}`;
   const acoes = el('div', { class: 'lancamento-acoes' });
-  const mostrarApagar = () => acoes.replaceChildren(
-    el('button', { class: 'botao botao-discreto', type: 'button', onclick: pedirConfirmacao }, rotulo));
+  const mostrarApagar = () => acoes.replaceChildren(...[
+    // O gasto de um pagamento de conta não se edita: o pagamento se desfaz e se faz de novo (com a data certa).
+    pagamento ? null : el('button', {
+      class: 'botao botao-discreto', type: 'button', 'aria-label': `Editar: ${titulo}, ${formatBRL(t.amountCents)}`, onclick: () => aoEditar(t),
+    }, 'Editar'),
+    el('button', { class: 'botao botao-discreto', type: 'button', onclick: pedirConfirmacao }, rotulo),
+  ].filter(Boolean));
   const pedirConfirmacao = () => acoes.replaceChildren(
     el('span', { class: 'confirmar' }, pagamento
       ? 'Desfazer o pagamento? A conta volta para "a pagar" e este gasto sai.'
@@ -147,6 +152,7 @@ export function renderHome(raiz, store, { faixa, go, lock }) {
     }
     go('home');
   };
+  const editar = (t) => go('entry', { editar: t.id, de: 'home' });
   const lancamentos = monthTransactions(estado.transactions, chave);
 
   raiz.classList.add('com-barra');
@@ -166,7 +172,7 @@ export function renderHome(raiz, store, { faixa, go, lock }) {
       el('h2', {}, `Lançamentos de ${nomeDoMes}`),
       erroAoApagar,
       lancamentos.length
-        ? el('ul', { class: 'lancamentos' }, lancamentos.map((t) => linhaDoLancamento(t, estado.categories, estado.cards, apagar)))
+        ? el('ul', { class: 'lancamentos' }, lancamentos.map((t) => linhaDoLancamento(t, estado.categories, estado.cards, apagar, editar)))
         : el('p', { class: 'vazio' }, 'Nada lançado neste mês.')),
     el('section', {},
       el('button', { class: 'botao botao-largo', type: 'button', onclick: () => go('settings') }, 'Configurações e cópia de segurança')),
