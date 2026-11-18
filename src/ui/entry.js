@@ -1,4 +1,5 @@
-import { addTransaction, newId } from '../domain/model.js';
+import { addTransactionWithCards, cardPurchaseFields, parseInstallments } from '../domain/cards.js';
+import { newId } from '../domain/model.js';
 import { todayISO } from '../lib/dates.js';
 import { parseBRL } from '../lib/money.js';
 import { el } from './dom.js';
@@ -65,9 +66,35 @@ export function renderEntry(raiz, store, aoTerminar, {
     nome: 'Gasto pessoal ou do trabalho', dividido: true, inicial: inicial.scope ?? 'personal',
     opcoes: [{ valor: 'personal', rotulo: 'Pessoal' }, { valor: 'work', rotulo: 'Trabalho' }],
   });
+  // "Como pagou" só aparece quando já existe um cartão cadastrado: quem não usa cartão não ganha toque nenhum a mais.
+  const cartoes = store.getState().cards;
+  const campoParcelas = el('input', {
+    class: 'campo', id: 'parcelas', type: 'text', inputmode: 'numeric', autocomplete: 'off', maxlength: '3', value: '1',
+  });
+  const cartaoGrupo = cartoes.length ? grupo({
+    nome: 'Cartão', inicial: cartoes[0].id, opcoes: cartoes.map((c) => ({ valor: c.id, rotulo: c.name })),
+  }) : null;
+  const secaoCartao = el('div', { class: 'secao-cartao', hidden: true },
+    el('p', { class: 'rotulo' }, 'Qual cartão'), cartaoGrupo?.elemento,
+    el('label', { class: 'rotulo', for: 'parcelas' }, 'Em quantas vezes?'),
+    el('p', { class: 'aviso-valor' }, 'Digite 1 se pagou tudo de uma vez.'),
+    campoParcelas);
+  const metodoGrupo = cartoes.length ? grupo({
+    nome: 'Como pagou', dividido: true, inicial: 'now',
+    opcoes: [{ valor: 'now', rotulo: 'Na hora' }, { valor: 'card', rotulo: 'No cartão' }],
+    aoMudar: (valor) => {
+      secaoCartao.hidden = valor !== 'card';
+      // O campo "Em quantas vezes?" nasce abaixo da barra de Salvar: traz para a tela, para ela ver que existe.
+      if (valor === 'card') secaoCartao.scrollIntoView?.({ block: 'center' });
+    },
+  }) : null;
   secaoGasto.append(
     el('p', { class: 'rotulo' }, 'Categoria'), categoriaGrupo.elemento,
     el('p', { class: 'rotulo' }, 'De onde saiu'), escopoGrupo.elemento,
+    metodoGrupo && el('p', { class: 'rotulo' }, 'Como pagou'),
+    metodoGrupo && el('p', { class: 'aviso-valor' }, 'Na hora é Pix, dinheiro ou débito.'),
+    metodoGrupo?.elemento,
+    metodoGrupo && secaoCartao,
   );
 
   let salvando = false;
@@ -88,6 +115,17 @@ export function renderEntry(raiz, store, aoTerminar, {
       return;
     }
     const nota = campoNota.value.trim();
+    const noCartao = tipo === 'expense' && metodoGrupo?.valor() === 'card';
+    let parcelas = 1;
+    if (noCartao) {
+      try {
+        parcelas = parseInstallments(campoParcelas.value);
+      } catch (falha) {
+        erro.textContent = falha.message;
+        campoParcelas.focus();
+        return;
+      }
+    }
     const campos = {
       kind: tipo,
       amountCents,
@@ -96,6 +134,7 @@ export function renderEntry(raiz, store, aoTerminar, {
       categoryId: tipo === 'expense' ? categoriaGrupo.valor() : null,
       note: nota,
       merchant: campoLocal.value.trim(),
+      ...(noCartao ? { method: 'card', cardId: cartaoGrupo.valor(), installments: parcelas } : {}),
     };
     const lancamento = construir ? construir(campos) : {
       id: newId(),
@@ -104,13 +143,14 @@ export function renderEntry(raiz, store, aoTerminar, {
       date: campos.date,
       scope: campos.scope,
       ...(tipo === 'expense' ? { categoryId: campos.categoryId } : {}),
+      ...cardPurchaseFields(campos),
       ...(nota ? { note: nota } : {}),
     };
     salvando = true;
     botaoSalvar.disabled = true;
     botaoSalvar.textContent = 'Salvando…';
     try {
-      await store.commit((s) => addTransaction(s, lancamento));
+      await store.commit((s) => addTransactionWithCards(s, lancamento));
       aoTerminar(lancamento);
     } catch (falha) {
       erro.textContent = `Não consegui salvar: ${falha.message}`;

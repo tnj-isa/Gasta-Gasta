@@ -254,3 +254,18 @@ h2 { margin: 0 0 var(--espaco-2); font-size: var(--fonte-titulo); font-weight: v
 .botoes-form { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; margin-top: var(--espaco-2); }
 .tela > .config-botoes { grid-template-columns: 1fr 1fr; margin-top: var(--espaco-2); }
 .tela > .aviso { margin-top: var(--espaco-3); }
+
+/* cartões */
+.faturas-botoes { display: grid; gap: var(--espaco-2); margin-top: var(--espaco-3); }
+.faturas-secao > .faturas-botoes > .botao { margin-top: 0; }
+.cartao { margin-top: var(--espaco-5); }
+.contas > .cartao:first-child { margin-top: var(--espaco-4); }
+.cartao-topo { display: flex; align-items: center; justify-content: space-between; gap: var(--espaco-3); }
+.cartao-topo h2 { margin: 0; overflow-wrap: anywhere; }
+.cartao .config-status { margin: 0; color: var(--cor-tinta-suave); }
+.cartao h3 { margin: var(--espaco-4) 0 0; font-size: var(--fonte-base); font-weight: var(--peso-forte); }
+.cartao .aviso-valor { margin: var(--espaco-2) 0 0; }
+.corrigir { display: flex; flex: 1 1 100%; flex-direction: column; gap: var(--espaco-2); width: 100%; }
+.corrigir .confirmar { flex: none; text-align: left; margin: 0; }
+.secao-cartao[hidden] { display: none; }
+.secao-cartao { display: flex; flex-direction: column; gap: var(--espaco-1); }

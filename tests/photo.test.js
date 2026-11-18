@@ -66,3 +66,13 @@ test('valor que não é inteiro positivo é recusado, para nunca gravar nota sem
     assert.throws(() => toTransaction({ ...base, amountCents }), RangeError, String(amountCents));
   }
 });
+
+test('compra no cartão leva o método, o cartão e as parcelas para o lançamento', () => {
+  const base = { kind: 'expense', amountCents: 9000, date: '2026-11-18', scope: 'personal', categoryId: 'casa' };
+  const t = toTransaction({ ...base, method: 'card', cardId: 'c1', installments: 3 });
+  assert.deepEqual([t.method, t.cardId, t.installments], ['card', 'c1', 3]);
+  const sem = toTransaction({ ...base, cardId: 'c1', installments: 3 });
+  assert.equal('method' in sem || 'cardId' in sem || 'installments' in sem, false, 'sem escolher cartão, nada de cartão');
+  assert.throws(() => toTransaction({ ...base, method: 'card' }), RangeError);
+  assert.throws(() => toTransaction({ ...base, method: 'card', cardId: 'c1', installments: 0 }), RangeError);
+});

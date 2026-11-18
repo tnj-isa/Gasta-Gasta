@@ -3,6 +3,7 @@ import { createStore } from '../data/store.js';
 import { createAutoLock, createVault } from '../data/vault.js';
 import { atualizacao } from './atualizacao.js';
 import { renderBills } from './billsScreen.js';
+import { renderCards } from './cardsScreen.js';
 import { el } from './dom.js';
 import { renderEntry } from './entry.js';
 import { renderHome } from './home.js';
@@ -86,6 +87,8 @@ renderers.set('photo', (container, { store: cofre, go: ir, faixa: topo }) => ren
 renderers.set('settings', (container, api) => renderSettings(container, api.store, api));
 
 renderers.set('bills', (container, api) => renderBills(container, api.store, api));
+
+renderers.set('cards', (container, api) => renderCards(container, api.store, api));
 
 renderers.set('entry', (container, { store: cofre, go: ir, faixa: topo, params }) => renderEntry(
   container, cofre, () => ir('home'), { kind: params.kind, faixa: topo }));

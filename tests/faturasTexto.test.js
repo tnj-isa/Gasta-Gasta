@@ -7,7 +7,16 @@ const conta = (extra) => ({ id: 'x', title: 'X', kind: 'boleto', scope: 'persona
 test('etiqueta: boleto, parcela com número e cartão, cada um com o seu tipo de cor', () => {
   assert.deepEqual(etiquetaDaConta(conta({})), { texto: 'Boleto', tipo: 'boleto' });
   assert.deepEqual(etiquetaDaConta(conta({ kind: 'installment', number: 4, of: 10 })), { texto: 'Parcela 4 de 10', tipo: 'parcela' });
-  assert.deepEqual(etiquetaDaConta(conta({ kind: 'card_statement' })), { texto: 'Cartão', tipo: 'cartao' });
+  assert.deepEqual(etiquetaDaConta(conta({ kind: 'card_statement', confirmed: true })), { texto: 'Fatura do cartão', tipo: 'cartao' });
+});
+
+test('fatura de cartão ainda prevista (não corrigida) diz que é prevista; confirmada ou paga, não', () => {
+  const fatura = (extra) => conta({ kind: 'card_statement', ...extra });
+  assert.equal(etiquetaDaConta(fatura({ confirmed: false })).texto, 'Fatura prevista');
+  assert.equal(etiquetaDaConta(fatura({ confirmed: false, paidDate: '2026-11-12' })).texto, 'Fatura do cartão');
+  assert.equal(etiquetaDaConta(fatura({ confirmed: true })).texto, 'Fatura do cartão');
+  assert.equal(etiquetaDaConta(fatura({})).texto, 'Fatura do cartão', 'sem o campo confirmed, conta como confirmada');
+  assert.equal(etiquetaDaConta(fatura({ confirmed: false })).tipo, 'cartao');
 });
 
 test('etiqueta de parcela sem número (dado antigo ou cópia estranha) não mostra "undefined"', () => {

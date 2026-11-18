@@ -1,3 +1,4 @@
+import { cardPurchaseFields } from '../domain/cards.js';
 import { newId } from '../domain/model.js';
 import { todayISO } from '../lib/dates.js';
 import { readReceiptText } from '../lib/ocr.js';
@@ -28,7 +29,7 @@ export function draftFromReceipt(parsed, today) {
  * Transforma o rascunho confirmado em lançamento. Só passam os campos de um lançamento
  * (nunca a foto, o texto da nota ou qualquer outra coisa que o rascunho carregue).
  * @param {ReturnType<typeof draftFromReceipt> & {amountCents: number, note?: string}} draft
- * @throws {RangeError} se o valor não for um número inteiro de centavos maior que zero
+ * @throws {RangeError} se o valor não for um número inteiro de centavos maior que zero, ou a compra no cartão estiver incompleta
  */
 export function toTransaction(draft) {
   if (!Number.isSafeInteger(draft.amountCents) || draft.amountCents <= 0) {
@@ -43,6 +44,7 @@ export function toTransaction(draft) {
     date: draft.date,
     scope: draft.scope ?? 'personal',
     categoryId: draft.categoryId ?? 'outros',
+    ...cardPurchaseFields(draft),
     ...(merchant ? { merchant } : {}),
     ...(note ? { note } : {}),
   };

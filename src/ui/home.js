@@ -1,6 +1,6 @@
 import { shouldRemindBackup } from '../data/backup.js';
 import { contaDoGasto, unpayBill } from '../domain/bills.js';
-import { removeTransaction } from '../domain/model.js';
+import { removeTransactionWithCards } from '../domain/cards.js';
 import { monthlySummary, monthTransactions } from '../domain/summary.js';
 import { daysBetween, monthKey, monthLabel, shiftMonth, shortDate, todayISO } from '../lib/dates.js';
 import { formatBRL } from '../lib/money.js';
@@ -60,13 +60,17 @@ function mosaico(resumo, categorias) {
  * Gasto que veio do pagamento de uma conta não se apaga solto (a conta ficaria "paga" sem gasto):
  * o botão vira "Desfazer pagamento", que devolve a conta para "a pagar".
  */
-function linhaDoLancamento(t, categorias, aoApagar) {
+function linhaDoLancamento(t, categorias, cartoes, aoApagar) {
   const pagamento = contaDoGasto(t) !== null;
   const rotulo = pagamento ? 'Desfazer pagamento' : 'Apagar';
   const nomeCategoria = categorias.find((c) => c.id === t.categoryId)?.name ?? 'Outros';
   const entrada = t.kind === 'income';
   const titulo = t.note || t.merchant || (entrada ? 'Entrada' : nomeCategoria);
-  const detalhe = entrada ? shortDate(t.date) : `${shortDate(t.date)}, ${nomeCategoria}`;
+  const nomeCartao = t.method === 'card' ? (cartoes.find((c) => c.id === t.cardId)?.name ?? 'Cartão') : null;
+  const parcelas = t.installments > 1 ? ` em ${t.installments}x` : '';
+  const detalhe = entrada
+    ? shortDate(t.date)
+    : `${shortDate(t.date)}, ${nomeCategoria}${nomeCartao ? `, ${nomeCartao}${parcelas}` : ''}`;
   const acoes = el('div', { class: 'lancamento-acoes' });
   const mostrarApagar = () => acoes.replaceChildren(
     el('button', { class: 'botao botao-discreto', type: 'button', onclick: pedirConfirmacao }, rotulo));
@@ -132,7 +136,7 @@ export function renderHome(raiz, store, { faixa, go, lock }) {
 
   const apagar = async (t) => {
     const conta = contaDoGasto(t);
-    await store.commit((s) => (conta === null ? removeTransaction(s, t.id) : unpayBill(s, conta)));
+    await store.commit((s) => (conta === null ? removeTransactionWithCards(s, t.id) : unpayBill(s, conta)));
     go('home');
   };
   const lancamentos = monthTransactions(estado.transactions, chave);
@@ -152,7 +156,7 @@ export function renderHome(raiz, store, { faixa, go, lock }) {
     el('section', {},
       el('h2', {}, `Lançamentos de ${nomeDoMes}`),
       lancamentos.length
-        ? el('ul', { class: 'lancamentos' }, lancamentos.map((t) => linhaDoLancamento(t, estado.categories, apagar)))
+        ? el('ul', { class: 'lancamentos' }, lancamentos.map((t) => linhaDoLancamento(t, estado.categories, estado.cards, apagar)))
         : el('p', { class: 'vazio' }, 'Nada lançado neste mês.')),
     el('section', {},
       el('button', { class: 'botao botao-largo', type: 'button', onclick: () => go('settings') }, 'Configurações e cópia de segurança')),

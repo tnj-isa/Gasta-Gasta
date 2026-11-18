@@ -16,7 +16,10 @@ export function etiquetaDaConta(conta) {
     const temNumero = Number.isInteger(conta.number) && Number.isInteger(conta.of);
     return { texto: temNumero ? `Parcela ${conta.number} de ${conta.of}` : 'Parcela', tipo: 'parcela' };
   }
-  if (conta.kind === 'card_statement') return { texto: 'Cartão', tipo: 'cartao' };
+  if (conta.kind === 'card_statement') {
+    const prevista = conta.confirmed === false && !conta.paidDate;
+    return { texto: prevista ? 'Fatura prevista' : 'Fatura do cartão', tipo: 'cartao' };
+  }
   return { texto: 'Boleto', tipo: 'boleto' };
 }
 

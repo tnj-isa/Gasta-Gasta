@@ -13,7 +13,7 @@ const ICONE_VOLTAR = 'M15 5l-7 7 7 7';
 const PAGAS_VISIVEIS = 10;
 
 /** Uma conta como linha de lista: nome, valor, etiqueta do tipo e quando vence. `acoes` é opcional. */
-function linhaDaConta(conta, hoje, acoes) {
+export function linhaDaConta(conta, hoje, acoes) {
   const etiqueta = etiquetaDaConta(conta);
   const atrasada = conta.overdue ?? (conta.paidDate === null && conta.dueDate < hoje);
   return el('li', { class: `fatura${atrasada ? ' atrasada' : ''}${conta.paidDate ? ' paga' : ''}` },
@@ -36,8 +36,10 @@ function linhaDaConta(conta, hoje, acoes) {
 export function cartaoFaturas(estado, hoje, ir) {
   const { items, totalCents } = upcomingBills(estado.bills, hoje);
   const faltam = pendingTotals(estado.bills).totalCents;
-  const botao = el('button', { class: 'botao botao-largo', type: 'button', onclick: () => ir('bills') },
-    estado.bills.length ? 'Ver contas e parcelas' : 'Cadastrar contas e parcelas');
+  const botoes = el('div', { class: 'faturas-botoes' },
+    el('button', { class: 'botao botao-largo', type: 'button', onclick: () => ir('bills') },
+      estado.bills.length ? 'Ver contas e parcelas' : 'Cadastrar contas e parcelas'),
+    el('button', { class: 'botao botao-largo', type: 'button', onclick: () => ir('cards') }, 'Cartões de crédito'));
 
   let corpo;
   if (!estado.bills.length) {
@@ -54,7 +56,7 @@ export function cartaoFaturas(estado, hoje, ir) {
   return el('section', { class: 'faturas-secao', 'aria-label': 'Faturas a vencer' },
     el('h2', {}, 'Faturas a vencer'),
     el('p', { class: 'sub' }, 'Nos próximos 30 dias'),
-    corpo, rodape, botao);
+    corpo, rodape, botoes);
 }
 
 /** "6 parcelas de R$ 200,00: R$ 1.200,00 no total, até 10/mai/2027". Vazio se algo ainda está faltando. */
@@ -189,6 +191,13 @@ export function renderBills(raiz, store, { faixa, go }) {
   /** Botões de uma conta: pagar/desfazer e apagar (com confirmação, e escolha entre uma parcela ou todas). */
   function acoesDaConta(conta) {
     const caixa = el('div', { class: 'fatura-acoes' });
+    if (conta.kind === 'card_statement') {
+      // Fatura de cartão nasce das compras: o valor se corrige e a fatura se paga na tela do cartão.
+      caixa.append(el('button', {
+        class: 'botao', type: 'button', 'aria-label': `Ver no cartão: ${conta.title}`, onclick: () => go('cards'),
+      }, 'Ver no cartão'));
+      return caixa;
+    }
     const todas = seriesOf(store.getState().bills, conta);
     const contexto = `${conta.title}, ${etiquetaDaConta(conta).texto}`;
     const normal = () => {
