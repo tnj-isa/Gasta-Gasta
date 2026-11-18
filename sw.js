@@ -1,6 +1,6 @@
 // Service worker: guarda o app no celular para abrir sem internet.
 // O número depois de "gasta-" é calculado por `npm run versao` (roda sozinho no `npm test`).
-const CACHE = 'gasta-fce6c6c2';
+const CACHE = 'gasta-6a185345';
 
 // Caminhos sempre relativos ("./"): o app mora em uma subpasta do GitHub Pages.
 const ASSETS = [
@@ -21,10 +21,13 @@ const ASSETS = [
   './src/ui/app.css',
   './src/ui/app.js',
   './src/ui/dom.js',
+  './src/ui/entry.js',
   './src/ui/fonts/lexend-latin-wght-normal.woff2',
+  './src/ui/home.js',
   './src/ui/instalacao.js',
   './src/ui/lock.js',
   './src/ui/main.js',
+  './src/ui/mosaico.js',
   './src/ui/tokens.css',
 ];
 

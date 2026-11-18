@@ -35,3 +35,16 @@ export function monthlySummary(transactions, month) {
     byCategory,
   };
 }
+
+/**
+ * Lançamentos de um mês ("AAAA-MM"), do mais novo para o mais antigo.
+ * No mesmo dia, o que foi lançado por último aparece primeiro.
+ * @param {import('./model.js').Transaction[]} transactions
+ * @param {string} month
+ */
+export function monthTransactions(transactions, month) {
+  return transactions
+    .filter((t) => monthKey(t.date) === month)
+    .reverse()
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+}

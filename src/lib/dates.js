@@ -42,3 +42,26 @@ export function daysBetween(fromIso, toIso) {
   const b = parts(toIso);
   return Math.round((Date.UTC(b.y, b.m - 1, b.d) - Date.UTC(a.y, a.m - 1, a.d)) / 86400000);
 }
+
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+/** Anda `delta` meses a partir de "AAAA-MM" (pode ser negativo). */
+export function shiftMonth(key, delta) {
+  const [y, m] = key.split('-').map(Number);
+  const total = y * 12 + (m - 1) + delta;
+  return `${Math.floor(total / 12)}-${pad((((total % 12) + 12) % 12) + 1)}`;
+}
+
+/** "2026-11" -> "Novembro de 2026" */
+export function monthLabel(key) {
+  const [y, m] = key.split('-').map(Number);
+  const nome = MESES[m - 1];
+  return `${nome[0].toUpperCase()}${nome.slice(1)} de ${y}`;
+}
+
+/** "2026-11-08" -> "8/nov" */
+export function shortDate(iso) {
+  const { m, d } = parts(iso);
+  return `${d}/${MESES_CURTOS[m - 1]}`;
+}

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { monthlySummary } from '../src/domain/summary.js';
+import { monthlySummary, monthTransactions } from '../src/domain/summary.js';
 
 const e = (cents, categoryId, scope, date = '2026-11-08') =>
   ({ id: categoryId + scope + cents, kind: 'expense', amountCents: cents, date, scope, categoryId });
@@ -69,4 +69,12 @@ test('não muda a lista recebida', () => {
   const copia = JSON.stringify(txs);
   monthlySummary(txs, '2026-11');
   assert.equal(JSON.stringify(txs), copia);
+});
+
+test('monthTransactions traz só o mês pedido, do mais novo para o mais antigo', () => {
+  const t = (id, date) => ({ id, kind: 'expense', amountCents: 100, date, scope: 'personal' });
+  const lista = [t('a', '2026-11-05'), t('b', '2026-10-31'), t('c', '2026-11-20'), t('d', '2026-11-20'), t('e', '2026-12-01')];
+  assert.deepEqual(monthTransactions(lista, '2026-11').map((x) => x.id), ['d', 'c', 'a']);
+  assert.deepEqual(monthTransactions(lista, '2027-01'), []);
+  assert.equal(lista.length, 5);
 });

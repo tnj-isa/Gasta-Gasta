@@ -17,3 +17,17 @@ export function el(tag, props = {}, ...children) {
   node.append(...children.flat().filter((c) => c != null && c !== false));
   return node;
 }
+
+/** Ícone simples de contorno (traços de 24x24). Cada argumento é o `d` de um traço. */
+export function icone(...caminhos) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  for (const d of caminhos) {
+    const traco = document.createElementNS(NS, 'path');
+    traco.setAttribute('d', d);
+    svg.append(traco);
+  }
+  return svg;
+}
