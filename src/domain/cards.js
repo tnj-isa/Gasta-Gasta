@@ -190,6 +190,65 @@ export function removeTransactionWithCards(s, id) {
   return apagado?.method === 'card' && apagado.cardId ? syncCardStatements(novo, apagado.cardId) : novo;
 }
 
+/**
+ * As compras feitas no cartão, da mais nova para a mais antiga.
+ * @param {State} s
+ * @param {string} cardId
+ * @returns {Transaction[]}
+ */
+export function cardPurchases(s, cardId) {
+  return s.transactions
+    .filter((t) => t.kind === 'expense' && t.method === 'card' && t.cardId === cardId)
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+}
+
+/**
+ * O que existe ligado ao cartão: quantas compras, quanto elas somam e quantas faturas (pagas ou não).
+ * É o que some junto quando o cartão é apagado.
+ * @param {State} s
+ * @param {string} cardId
+ * @returns {{purchases: number, purchasesCents: number, statements: number}}
+ */
+export function cardUsage(s, cardId) {
+  const compras = cardPurchases(s, cardId);
+  return {
+    purchases: compras.length,
+    purchasesCents: compras.reduce((total, t) => total + t.amountCents, 0),
+    statements: s.bills.filter((b) => b.kind === 'card_statement' && b.cardId === cardId).length,
+  };
+}
+
+/**
+ * Apaga o cartão e tudo o que é dele: as compras feitas nele (saem do "Saiu") e todas as faturas, pagas ou não.
+ * Cartão que não existe não muda nada.
+ * @param {State} s
+ * @param {string} cardId
+ * @returns {State}
+ */
+export function removeCard(s, cardId) {
+  if (!s.cards.some((c) => c.id === cardId)) return s;
+  return {
+    ...s,
+    cards: s.cards.filter((c) => c.id !== cardId),
+    transactions: s.transactions.filter((t) => !(t.method === 'card' && t.cardId === cardId)),
+    bills: s.bills.filter((b) => !(b.kind === 'card_statement' && b.cardId === cardId)),
+  };
+}
+
+/**
+ * Apaga uma fatura de cartão. Se ainda há compras nessa fatura, ela volta como prevista (a soma das compras, não paga,
+ * sem o valor corrigido); sem compras, some de vez. Não apaga compras. Só vale para fatura de cartão.
+ * @param {State} s
+ * @param {string} billId
+ * @returns {State}
+ */
+export function removeStatement(s, billId) {
+  const fatura = s.bills.find((b) => b.id === billId);
+  if (!fatura || fatura.kind !== 'card_statement') return s;
+  const semFatura = { ...s, bills: s.bills.filter((b) => b.id !== billId) };
+  return fatura.cardId ? syncCardStatements(semFatura, fatura.cardId) : semFatura;
+}
+
 /** Quantas faturas aparecem de uma vez na tela principal. */
 export const FATURAS_NA_TELA_PRINCIPAL = 6;
 

@@ -34,8 +34,11 @@ export function linhaDaConta(conta, hoje, acoes) {
  * @param {(tela: string) => void} ir
  */
 export function cartaoFaturas(estado, hoje, ir) {
-  const { items, totalCents } = upcomingBills(estado.bills, hoje);
+  // As faturas dos cartões têm o cartão delas ("Cartões de crédito", logo abaixo): aqui só boletos e parcelas, para nada aparecer duas vezes.
+  const semCartao = estado.bills.filter((b) => b.kind !== 'card_statement');
+  const { items, totalCents } = upcomingBills(semCartao, hoje);
   const faltam = pendingTotals(estado.bills).totalCents;
+  const nosCartoes = faltam - pendingTotals(semCartao).totalCents;
   const botoes = el('div', { class: 'faturas-botoes' },
     el('button', { class: 'botao botao-largo', type: 'button', onclick: () => ir('bills') },
       estado.bills.length ? 'Ver contas e parcelas' : 'Cadastrar contas e parcelas'),
@@ -45,13 +48,16 @@ export function cartaoFaturas(estado, hoje, ir) {
   if (!estado.bills.length) {
     corpo = el('p', { class: 'vazio' }, 'Você ainda não cadastrou contas. Cadastre boletos e parcelas para ver aqui o que vai vencer.');
   } else if (!items.length) {
-    corpo = el('p', { class: 'vazio' }, faltam > 0 ? 'Nada vence nos próximos 30 dias.' : 'Tudo pago. Nenhuma conta pendente.');
+    corpo = el('p', { class: 'vazio' }, faltam === 0 ? 'Tudo pago. Nenhuma conta pendente.'
+      : nosCartoes > 0 ? 'Nenhum boleto ou parcela vence nos próximos 30 dias. As faturas dos cartões ficam no cartão "Cartões de crédito".'
+        : 'Nada vence nos próximos 30 dias.');
   } else {
     corpo = el('ul', { class: 'faturas' }, items.map((c) => linhaDaConta(c, hoje)));
   }
   const rodape = faltam > 0 && el('div', { class: 'faturas-rodape' },
     items.length > 0 && el('div', { class: 'total' }, el('span', {}, 'Total a vencer'), el('strong', {}, formatBRL(totalCents))),
-    el('div', { class: 'zerar' }, el('span', {}, 'Faltam para zerar tudo'), el('b', {}, formatBRL(faltam))));
+    el('div', { class: 'zerar' }, el('span', {}, 'Faltam para zerar tudo'), el('b', {}, formatBRL(faltam))),
+    nosCartoes > 0 && el('p', { class: 'aviso-valor' }, `Inclui ${formatBRL(nosCartoes)} das faturas dos cartões.`));
 
   return el('section', { class: 'faturas-secao', 'aria-label': 'Faturas a vencer' },
     el('h2', {}, 'Faturas a vencer'),

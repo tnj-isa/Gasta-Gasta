@@ -1,7 +1,9 @@
 import { payBill, unpayBill } from '../domain/bills.js';
-import { buildCard, confirmStatement, faturasDosCartoes, syncCardStatements } from '../domain/cards.js';
+import {
+  buildCard, cardPurchases, cardUsage, confirmStatement, faturasDosCartoes, removeCard, removeStatement, removeTransactionWithCards, syncCardStatements,
+} from '../domain/cards.js';
 import { upsertCard } from '../domain/model.js';
-import { todayISO } from '../lib/dates.js';
+import { shortDate, todayISO } from '../lib/dates.js';
 import { formatBRL, parseBRL } from '../lib/money.js';
 import { linhaDaConta } from './billsScreen.js';
 import { botaoDeIcone, el } from './dom.js';
@@ -13,6 +15,8 @@ const PAGAS_VISIVEIS = 3;
 function centavosParaCampo(centavos) {
   return `${Math.trunc(centavos / 100)},${String(centavos % 100).padStart(2, '0')}`;
 }
+
+const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 
 /** Texto de "dia 1 a 31" digitado: só 1 ou 2 números, senão NaN (o cartão recusa com a mensagem certa). */
 const lerDia = (texto) => (/^\d{1,2}$/.test(texto.trim()) ? Number(texto.trim()) : NaN);
@@ -114,6 +118,7 @@ export function renderCards(raiz, store, { faixa, go }) {
   const aviso = el('p', { class: 'aviso', role: 'status', hidden: true });
   const area = el('div', { class: 'contas-formulario' });
   const lista = el('div', { class: 'contas' });
+  const comprasAbertas = new Set();
 
   const dizer = (texto) => { aviso.textContent = texto; aviso.hidden = !texto; };
   const mudar = async (mutator, mensagem) => {
@@ -145,15 +150,20 @@ export function renderCards(raiz, store, { faixa, go }) {
   function acoesDaFatura(fatura) {
     const caixa = el('div', { class: 'fatura-acoes' });
     const contexto = `${fatura.title}, vence ${fatura.dueDate.split('-').reverse().join('/')}`;
+    const apagavel = fatura.paidDate || fatura.confirmed === true;
+    const botaoApagar = () => el('button', {
+      class: 'botao botao-discreto', type: 'button', 'aria-label': `Apagar fatura: ${contexto}`, onclick: perguntarApagar,
+    }, 'Apagar');
     const normal = () => {
       if (fatura.paidDate) {
         caixa.replaceChildren(el('button', {
           class: 'botao', type: 'button', 'aria-label': `Desfazer pagamento: ${contexto}`,
           onclick: (e) => { e.currentTarget.disabled = true; mudar((s) => unpayBill(s, fatura.id), 'Pagamento da fatura desfeito.'); },
-        }, 'Desfazer'));
+        }, 'Desfazer'), botaoApagar());
         return;
       }
-      caixa.replaceChildren(
+      // replaceChildren escreveria "false" na tela se recebesse false: só passa o que existe.
+      caixa.replaceChildren(...[
         el('button', { class: 'botao', type: 'button', 'aria-label': `Corrigir valor: ${contexto}`, onclick: corrigir }, 'Corrigir valor'),
         el('button', {
           class: 'botao botao-principal', type: 'button', 'aria-label': `Marcar como paga: ${contexto}`,
@@ -161,8 +171,17 @@ export function renderCards(raiz, store, { faixa, go }) {
             e.currentTarget.disabled = true;
             mudar((s) => payBill(s, fatura.id, todayISO()), 'Fatura paga. Isso não vira gasto novo: as compras já estão lançadas.');
           },
-        }, 'Marcar como paga'));
+        }, 'Marcar como paga'),
+        apagavel ? botaoApagar() : null,
+      ].filter(Boolean));
     };
+    const perguntarApagar = () => caixa.replaceChildren(
+      el('span', { class: 'confirmar' }, 'Apagar esta fatura? Se ainda há compras nela, ela volta como prevista, com a soma das compras. As compras não são apagadas.'),
+      el('button', { class: 'botao', type: 'button', onclick: normal }, 'Cancelar'),
+      el('button', {
+        class: 'botao botao-perigo', type: 'button',
+        onclick: (e) => { e.currentTarget.disabled = true; mudar((s) => removeStatement(s, fatura.id), 'Fatura apagada.'); },
+      }, 'Apagar mesmo'));
     const corrigir = () => {
       const campo = el('input', {
         class: 'campo campo-valor', type: 'text', inputmode: 'decimal', autocomplete: 'off', value: centavosParaCampo(fatura.amountCents),
@@ -196,11 +215,65 @@ export function renderCards(raiz, store, { faixa, go }) {
     return caixa;
   }
 
+  /** Uma compra no cartão, com Apagar em dois passos (as faturas do cartão são recalculadas). */
+  function linhaDaCompra(t, estado) {
+    const categoria = estado.categories.find((c) => c.id === t.categoryId)?.name ?? 'Outros';
+    const titulo = t.note || t.merchant || categoria;
+    const vezes = t.installments > 1 ? `, em ${t.installments}x` : '';
+    const ano = t.date.slice(0, 4) === todayISO().slice(0, 4) ? '' : `/${t.date.slice(0, 4)}`;
+    const acoes = el('div', { class: 'lancamento-acoes' });
+    const normal = () => acoes.replaceChildren(el('button', {
+      class: 'botao botao-discreto', type: 'button', 'aria-label': `Apagar compra: ${titulo}, ${formatBRL(t.amountCents)}`, onclick: perguntar,
+    }, 'Apagar'));
+    const perguntar = () => acoes.replaceChildren(
+      el('span', { class: 'confirmar' }, 'Apagar esta compra? Ela sai do "Saiu" e das faturas.'),
+      el('button', { class: 'botao', type: 'button', onclick: normal }, 'Cancelar'),
+      el('button', {
+        class: 'botao botao-perigo', type: 'button',
+        onclick: (e) => { e.currentTarget.disabled = true; mudar((s) => removeTransactionWithCards(s, t.id), 'Compra apagada. As faturas foram recalculadas.'); },
+      }, 'Apagar mesmo'));
+    normal();
+    return el('li', { class: 'lancamento' },
+      el('div', { class: 'lancamento-linha' },
+        el('div', {},
+          el('div', { class: 'lancamento-titulo' }, titulo),
+          el('div', { class: 'lancamento-detalhe' }, `${shortDate(t.date)}${ano}, ${categoria}${vezes}`)),
+        el('div', { class: 'lancamento-valor' }, formatBRL(t.amountCents))),
+      acoes);
+  }
+
+  /** Rodapé do cartão: ver (e apagar) as compras e apagar o cartão inteiro, com a conta do que vai junto. */
+  function rodapeDoCartao(cartao, estado) {
+    const uso = cardUsage(estado, cartao.id);
+    const caixa = el('div', { class: 'cartao-rodape' });
+    const normal = () => caixa.replaceChildren(
+      el('button', {
+        class: 'botao', type: 'button', 'aria-expanded': String(comprasAbertas.has(cartao.id)),
+        'aria-label': `${comprasAbertas.has(cartao.id) ? 'Esconder compras' : `Compras (${uso.purchases})`} do ${cartao.name}`,
+        onclick: () => { if (comprasAbertas.has(cartao.id)) comprasAbertas.delete(cartao.id); else comprasAbertas.add(cartao.id); desenhar(); },
+      }, comprasAbertas.has(cartao.id) ? 'Esconder compras' : `Compras (${uso.purchases})`),
+      el('button', { class: 'botao botao-discreto', type: 'button', 'aria-label': `Apagar cartão ${cartao.name}`, onclick: perguntar }, 'Apagar cartão'));
+    const perguntar = () => {
+      const leva = uso.purchases + uso.statements === 0 ? ''
+        : ` Também saem ${plural(uso.purchases, 'compra feita nele', 'compras feitas nele')} (${formatBRL(uso.purchasesCents)} em "Saiu") e ${plural(uso.statements, 'fatura', 'faturas')}.`;
+      caixa.replaceChildren(
+        el('span', { class: 'confirmar' }, `Apagar o cartão ${cartao.name}?${leva} Não dá para desfazer.`),
+        el('button', { class: 'botao', type: 'button', onclick: normal }, 'Cancelar'),
+        el('button', {
+          class: 'botao botao-perigo', type: 'button',
+          onclick: (e) => { e.currentTarget.disabled = true; comprasAbertas.delete(cartao.id); mudar((s) => removeCard(s, cartao.id), `${cartao.name} apagado.`); },
+        }, 'Apagar cartão mesmo'));
+    };
+    normal();
+    return caixa;
+  }
+
   function secaoDoCartao(cartao, estado, hoje) {
     const faturas = estado.bills.filter((b) => b.kind === 'card_statement' && b.cardId === cartao.id);
     const aPagar = faturas.filter((b) => !b.paidDate).sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
     const pagas = faturas.filter((b) => b.paidDate).sort((a, b) => (a.paidDate < b.paidDate ? 1 : -1)).slice(0, PAGAS_VISIVEIS);
     const temPrevista = aPagar.some((b) => b.confirmed === false);
+    const compras = comprasAbertas.has(cartao.id) ? cardPurchases(estado, cartao.id) : [];
     return el('section', { class: 'cartao', 'aria-label': cartao.name },
       el('div', { class: 'cartao-topo' },
         el('h2', {}, cartao.name),
@@ -210,10 +283,15 @@ export function renderCards(raiz, store, { faixa, go }) {
         ? el('p', { class: 'vazio' }, 'Ainda não há compras neste cartão. Ao registrar um gasto, escolha "No cartão".')
         : [
           aPagar.length > 0 && el('ul', { class: 'faturas' }, aPagar.map((f) => linhaDaConta(f, hoje, acoesDaFatura(f)))),
-          temPrevista && el('p', { class: 'aviso-valor' }, 'Fatura prevista é a soma das compras. Quando a fatura real chegar, toque em "Corrigir valor".'),
+          temPrevista && el('p', { class: 'aviso-valor' },
+            'Fatura prevista é a soma das compras. Quando a fatura real chegar, toque em "Corrigir valor". Para tirar uma fatura prevista, apague as compras dela.'),
           pagas.length > 0 && el('h3', {}, 'Pagas'),
           pagas.length > 0 && el('ul', { class: 'faturas' }, pagas.map((f) => linhaDaConta(f, hoje, acoesDaFatura(f)))),
-        ]);
+        ],
+      rodapeDoCartao(cartao, estado),
+      comprasAbertas.has(cartao.id) && (compras.length > 0
+        ? el('ul', { class: 'lancamentos', 'aria-label': `Compras no ${cartao.name}` }, compras.map((t) => linhaDaCompra(t, estado)))
+        : el('p', { class: 'vazio' }, 'Nenhuma compra neste cartão.')));
   }
 
   function desenhar() {
