@@ -103,3 +103,38 @@ test('create num app que já tem senha é recusado e não apaga nada', async () 
   const s = await store.load('senha-forte');
   assert.equal(s.transactions.length, 1);
 });
+
+// ---------- trocar a senha ----------
+
+test('trocar a senha: a nova abre e a antiga não, com tudo o que foi lançado', async () => {
+  const { vault, store } = novo();
+  await store.create('senha-antiga');
+  await store.commit(s => addTransaction(s, tx('t1')));
+  await store.changePassword('senha-antiga', 'senha-nova-1');
+  vault.lock();
+  await assert.rejects(store.load('senha-antiga'), WrongPasswordError);
+  const s = await store.load('senha-nova-1');
+  assert.deepEqual(s.transactions.map(t => t.id), ['t1']);
+});
+
+test('trocar a senha espera os salvamentos que já estavam na fila (nenhum lançamento fica de fora)', async () => {
+  const { vault, store } = novo();
+  await store.create('senha-antiga');
+  const lancando = store.commit(s => addTransaction(s, tx('t1')));
+  const trocando = store.changePassword('senha-antiga', 'senha-nova-1');
+  const depois = store.commit(s => addTransaction(s, tx('t2')));
+  await Promise.all([lancando, trocando, depois]);
+  vault.lock();
+  const s = await store.load('senha-nova-1');
+  assert.deepEqual(s.transactions.map(t => t.id), ['t1', 't2']);
+});
+
+test('trocar a senha com a senha atual errada: recusa e o app segue funcionando', async () => {
+  const { vault, store } = novo();
+  await store.create('senha-antiga');
+  await assert.rejects(store.changePassword('errada-123', 'senha-nova-1'), WrongPasswordError);
+  await store.commit(s => addTransaction(s, tx('t1')));
+  vault.lock();
+  const s = await store.load('senha-antiga');
+  assert.equal(s.transactions.length, 1);
+});

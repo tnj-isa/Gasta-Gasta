@@ -167,3 +167,84 @@ test('depois que o relógio dispara, check não trava de novo, e touch recomeça
   al.check();
   assert.equal(travou, 2);
 });
+
+// ---------- trocar a senha ----------
+
+test('trocar a senha: a nova abre os mesmos dados e a antiga deixa de abrir', async () => {
+  const v = createVault(memoryStorage(), { iterations: 1000 });
+  await v.init('senha-antiga', { n: 1 });
+  await v.changePassword('senha-antiga', 'senha-nova-1', { n: 1 });
+  v.lock();
+  await assert.rejects(v.unlock('senha-antiga'), WrongPasswordError);
+  assert.deepEqual(await v.unlock('senha-nova-1'), { n: 1 });
+});
+
+test('trocar a senha regrava com o estado que recebe (nada do que foi salvo antes se perde)', async () => {
+  const v = createVault(memoryStorage(), { iterations: 1000 });
+  await v.init('senha-antiga', { n: 1 });
+  await v.save({ n: 2 });
+  await v.changePassword('senha-antiga', 'senha-nova-1', { n: 2 });
+  v.lock();
+  assert.deepEqual(await v.unlock('senha-nova-1'), { n: 2 });
+});
+
+test('trocar a senha usa um sal novo (a chave antiga não serve de atalho)', async () => {
+  const storage = memoryStorage();
+  const v = createVault(storage, { iterations: 1000 });
+  await v.init('senha-antiga', { n: 1 });
+  const antes = JSON.parse(await storage.get('vault'));
+  await v.changePassword('senha-antiga', 'senha-nova-1', { n: 1 });
+  const depois = JSON.parse(await storage.get('vault'));
+  assert.notEqual(depois.salt, antes.salt);
+});
+
+test('senha atual errada: nada é gravado e o cofre segue aberto com a senha de antes', async () => {
+  const storage = memoryStorage();
+  const v = createVault(storage, { iterations: 1000 });
+  await v.init('senha-antiga', { n: 1 });
+  const antes = await storage.get('vault');
+  await assert.rejects(v.changePassword('errada-123', 'senha-nova-1', { n: 1 }), WrongPasswordError);
+  assert.equal(await storage.get('vault'), antes);
+  assert.equal(v.isUnlocked(), true);
+  await v.save({ n: 2 });
+  v.lock();
+  assert.deepEqual(await v.unlock('senha-antiga'), { n: 2 });
+});
+
+test('trocar a senha com o cofre bloqueado é recusado e não grava nada', async () => {
+  const storage = memoryStorage();
+  const v = createVault(storage, { iterations: 1000 });
+  await v.init('senha-antiga', { n: 1 });
+  const antes = await storage.get('vault');
+  v.lock();
+  await assert.rejects(v.changePassword('senha-antiga', 'senha-nova-1', { n: 1 }), /bloqueado/);
+  assert.equal(await storage.get('vault'), antes);
+});
+
+test('depois de trocar a senha, esta janela continua gravando (com a chave nova)', async () => {
+  const v = createVault(memoryStorage(), { iterations: 1000 });
+  await v.init('senha-antiga', { n: 1 });
+  await v.changePassword('senha-antiga', 'senha-nova-1', { n: 1 });
+  await v.save({ n: 5 });
+  v.lock();
+  assert.deepEqual(await v.unlock('senha-nova-1'), { n: 5 });
+});
+
+test('trocar a senha com outra janela tendo gravado no meio: é recusado e o que a outra gravou fica', async () => {
+  const { a, b } = await duasJanelas();
+  await a.save({ n: 2 });
+  await assert.rejects(b.changePassword('senha-forte', 'senha-nova-1', { n: 1 }), VaultConflictError);
+  b.lock();
+  assert.deepEqual(await b.unlock('senha-forte'), { n: 2 });
+});
+
+test('a outra janela, ainda com a senha antiga, não consegue gravar por cima da senha nova', async () => {
+  const { storage, a, b } = await duasJanelas();
+  await a.changePassword('senha-forte', 'senha-nova-1', { n: 1 });
+  const depoisDaTroca = await storage.get('vault');
+  await assert.rejects(b.save({ n: 9 }), VaultConflictError);
+  assert.equal(await storage.get('vault'), depoisDaTroca);
+  b.lock();
+  await assert.rejects(b.unlock('senha-forte'), WrongPasswordError);
+  assert.deepEqual(await b.unlock('senha-nova-1'), { n: 1 });
+});

@@ -1,11 +1,13 @@
 import { BackupError, exportBackup, importBackup } from '../data/backup.js';
+import { VaultConflictError } from '../data/vault.js';
 import { categoryIdFromName, validateCategoryName } from '../domain/categorias.js';
 import { removeCategory, setSettings, upsertCategory } from '../domain/model.js';
+import { arquivoDaCopia, compartilhar, podeCompartilhar } from '../lib/compartilhar.js';
 import { WrongPasswordError } from '../lib/crypto.js';
 import { shortDate, todayISO } from '../lib/dates.js';
 import { botaoDeIcone, el } from './dom.js';
 import { instalacao } from './instalacao.js';
-import { validarNovaSenha } from './lock.js';
+import { validarNovaSenha, validarTrocaDeSenha } from './lock.js';
 import { corDaCategoria } from './mosaico.js';
 import { grupo } from './opcoes.js';
 
@@ -18,10 +20,10 @@ const TEMPOS_DE_BLOQUEIO = [
   { valor: '600000', rotulo: '10 minutos' },
 ];
 
-/** Baixa um texto como arquivo (no celular, vai para a pasta Downloads). */
-function baixarArquivo(nome, texto) {
-  const url = URL.createObjectURL(new Blob([texto], { type: 'application/json' }));
-  const link = el('a', { href: url, download: nome });
+/** Baixa o arquivo (no celular, vai para a pasta Downloads). */
+function baixarArquivo(arquivo) {
+  const url = URL.createObjectURL(arquivo);
+  const link = el('a', { href: url, download: arquivo.name });
   document.body.append(link);
   link.click();
   link.remove();
@@ -69,14 +71,66 @@ function secaoCopia(store) {
   };
   const fechar = () => formularios.replaceChildren();
 
+  /** Anota a data da cópia (é o que apaga o lembrete de 30 dias). */
+  const anotarCopia = async (hoje) => {
+    await store.commit((s) => setSettings(s, { lastBackup: hoje }));
+    atualizarStatus();
+  };
+
+  /** Cópia criada: a pessoa escolhe compartilhar (WhatsApp, Drive…) e/ou salvar no celular. Cada escolha é um toque novo. */
+  const copiaPronta = (arquivo, hoje) => {
+    const erro = el('p', { class: 'erro', role: 'alert' });
+    let ocupado = false;
+    /** Roda a escolha sem deixar dois toques seguidos se atropelarem. */
+    const escolher = (botao, fazer) => async () => {
+      if (ocupado) return;
+      ocupado = true;
+      botao.disabled = true;
+      erro.textContent = '';
+      try {
+        resultado.textContent = await fazer();
+      } catch (falha) {
+        erro.textContent = `Não consegui: ${falha.message}`;
+      }
+      ocupado = false;
+      botao.disabled = false;
+    };
+
+    const salvarNoCelular = el('button', { class: 'botao', type: 'button' }, 'Salvar no celular');
+    salvarNoCelular.addEventListener('click', escolher(salvarNoCelular, async () => {
+      baixarArquivo(arquivo);
+      await anotarCopia(hoje);
+      return `Cópia salva no arquivo ${arquivo.name} (pasta Downloads). Guarde esse arquivo também fora do celular, como no e-mail ou no Google Drive.`;
+    }));
+
+    const botoes = [salvarNoCelular];
+    if (podeCompartilhar(arquivo)) {
+      const enviar = el('button', { class: 'botao botao-principal', type: 'button' }, 'Compartilhar (WhatsApp, Drive…)');
+      enviar.addEventListener('click', escolher(enviar, async () => {
+        if (await compartilhar(arquivo) === 'cancelado') return 'Você fechou o compartilhamento. Nada foi enviado.';
+        await anotarCopia(hoje);
+        return `Cópia compartilhada (${arquivo.name}). Confira se chegou no lugar que você escolheu.`;
+      }));
+      botoes.unshift(enviar);
+    }
+
+    resultado.textContent = '';
+    formularios.replaceChildren(el('div', { class: 'config-form' },
+      el('p', { class: 'aviso' }, `Cópia pronta: ${arquivo.name}. Ela só abre com a senha que você acabou de escolher. Guarde fora do celular: mande para você mesma no WhatsApp, ou salve no Google Drive.`),
+      el('div', { class: 'config-botoes' }, ...botoes),
+      erro,
+      el('button', { class: 'botao botao-discreto', type: 'button', onclick: fechar }, 'Pronto')));
+  };
+
   const formularioSalvar = () => {
+    resultado.textContent = '';
     const erro = el('p', { class: 'erro', role: 'alert' });
     const { campos: [senha, confirmacao], elementos } = camposDeSenha([
       { id: 'copia-senha', texto: 'Senha da cópia (mínimo 8 caracteres)' },
       { id: 'copia-senha2', texto: 'Repita a senha' },
     ]);
     let ocupado = false;
-    const botao = el('button', { class: 'botao botao-principal', type: 'submit' }, 'Salvar cópia');
+    const botao = el('button', { class: 'botao botao-principal', type: 'submit' }, 'Criar cópia');
     const enviar = async (evento) => {
       evento.preventDefault();
       if (ocupado) return;
@@ -89,17 +143,12 @@ function secaoCopia(store) {
       try {
         const hoje = todayISO();
         const texto = await exportBackup(store.getState(), senha.value);
-        const nome = `controle-${hoje}.json`;
-        baixarArquivo(nome, texto);
-        await store.commit((s) => setSettings(s, { lastBackup: hoje }));
-        fechar();
-        atualizarStatus();
-        resultado.textContent = `Cópia salva no arquivo ${nome} (pasta Downloads). Guarde esse arquivo também fora do celular, como no e-mail ou no Google Drive. Só abre com a senha que você acabou de escolher.`;
+        copiaPronta(arquivoDaCopia(hoje, texto), hoje);
       } catch (falha) {
-        erro.textContent = `Não consegui salvar a cópia: ${falha.message}`;
+        erro.textContent = `Não consegui criar a cópia: ${falha.message}`;
         ocupado = false;
         botao.disabled = false;
-        botao.textContent = 'Salvar cópia';
+        botao.textContent = 'Criar cópia';
       }
     };
     formularios.replaceChildren(el('form', { class: 'config-form', novalidate: true, onsubmit: enviar },
@@ -112,7 +161,7 @@ function secaoCopia(store) {
   /** Restaurar: escolhe o arquivo, abre com a senha da cópia, mostra o que tem e só troca depois do "sim". */
   const formularioRestaurar = () => {
     const erro = el('p', { class: 'erro', role: 'alert' });
-    const arquivo = el('input', { class: 'campo', id: 'copia-arquivo', type: 'file', accept: '.json,application/json' });
+    const arquivo = el('input', { class: 'campo', id: 'copia-arquivo', type: 'file', accept: '.txt,.json,text/plain,application/json' });
     const { campos: [senha], elementos } = camposDeSenha([{ id: 'copia-senha-abrir', texto: 'Senha da cópia' }]);
     let ocupado = false;
     const botao = el('button', { class: 'botao botao-principal', type: 'submit' }, 'Abrir cópia');
@@ -295,6 +344,64 @@ function secaoBloqueio(store, rearmar) {
     opcoes.elemento, aviso);
 }
 
+/** Trocar a senha do app: pede a atual e a nova (duas vezes). Quem esqueceu a senha não tem como recuperá-la. */
+function secaoSenha(store) {
+  const caixa = el('section', { class: 'config' });
+  const formularios = el('div', { class: 'config-formularios' });
+  const resultado = el('p', { class: 'config-status', role: 'status' });
+  const fechar = () => formularios.replaceChildren();
+
+  const formulario = () => {
+    resultado.textContent = '';
+    const erro = el('p', { class: 'erro', role: 'alert' });
+    const { campos, elementos } = camposDeSenha([
+      { id: 'troca-atual', texto: 'Senha atual' },
+      { id: 'troca-nova', texto: 'Senha nova (mínimo 8 caracteres)' },
+      { id: 'troca-nova2', texto: 'Repita a senha nova' },
+    ]);
+    const [atual, nova, confirmacao] = campos;
+    let ocupado = false;
+    const botao = el('button', { class: 'botao botao-principal', type: 'submit' }, 'Salvar senha nova');
+    const enviar = async (evento) => {
+      evento.preventDefault();
+      if (ocupado) return;
+      erro.textContent = '';
+      const problema = validarTrocaDeSenha(atual.value, nova.value, confirmacao.value);
+      if (problema) { erro.textContent = problema; return; }
+      ocupado = true;
+      botao.disabled = true;
+      botao.textContent = 'Trocando…';
+      try {
+        await store.changePassword(atual.value, nova.value);
+        campos.forEach((c) => { c.value = ''; });
+        fechar();
+        resultado.textContent = 'Senha trocada. Da próxima vez, o app pede a senha nova. As cópias de segurança já salvas continuam abrindo com a senha que você escolheu para cada uma.';
+      } catch (falha) {
+        if (falha instanceof WrongPasswordError) erro.textContent = 'A senha atual está incorreta. Nada foi alterado.';
+        else if (falha instanceof VaultConflictError) erro.textContent = `${falha.message} Nada foi alterado.`;
+        else erro.textContent = `Não consegui trocar a senha: ${falha.message}. Nada foi alterado.`;
+        atual.value = '';
+        ocupado = false;
+        botao.disabled = false;
+        botao.textContent = 'Salvar senha nova';
+      }
+    };
+    formularios.replaceChildren(el('form', { class: 'config-form', novalidate: true, onsubmit: enviar },
+      el('p', { class: 'aviso' }, 'Não existe como recuperar uma senha esquecida. Se você perder a senha nova, só uma cópia de segurança traz os dados de volta.'),
+      ...elementos, erro,
+      el('div', { class: 'barra-botoes' }, el('button', { class: 'botao', type: 'button', onclick: fechar }, 'Cancelar'), botao)));
+    atual.focus();
+  };
+
+  caixa.append(
+    el('h2', {}, 'Senha do app'),
+    el('p', {}, 'Troque a senha quando quiser, por exemplo se alguém a descobrir.'),
+    resultado,
+    el('button', { class: 'botao botao-largo', type: 'button', onclick: formulario }, 'Trocar senha'),
+    formularios);
+  return caixa;
+}
+
 /** Atalho para a tela de contas fixas (o que se repete todo mês). */
 function secaoContasFixas(store, go) {
   const n = store.getState().recurring.length;
@@ -330,7 +437,7 @@ function secaoAparelho() {
 }
 
 /**
- * Tela de configurações: cópia de segurança, categorias, tempo para travar e dados do aparelho.
+ * Tela de configurações: cópia de segurança, categorias, tempo para travar, senha e dados do aparelho.
  * @param {HTMLElement} raiz
  * @param {ReturnType<typeof import('../data/store.js').createStore>} store
  * @param {{faixa: HTMLElement, go: (tela: string, params?: object) => void, rearmar: () => void, params?: {aviso?: string}}} contexto
@@ -346,5 +453,5 @@ export function renderSettings(raiz, store, { faixa, go, rearmar, params = {} })
     go('settings', { aviso: 'Pronto: os dados da cópia foram restaurados neste aparelho.' });
   });
   if (params.aviso) raiz.append(el('p', { class: 'aviso', role: 'status' }, params.aviso));
-  raiz.append(copia.elemento, secaoContasFixas(store, go), secaoCategorias(store), secaoBloqueio(store, rearmar), secaoAparelho());
+  raiz.append(copia.elemento, secaoContasFixas(store, go), secaoCategorias(store), secaoBloqueio(store, rearmar), secaoSenha(store), secaoAparelho());
 }

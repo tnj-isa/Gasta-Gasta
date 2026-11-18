@@ -64,6 +64,25 @@ export function createVault(storage, { iterations = DEFAULT_ITERATIONS } = {}) {
       session = { ...session, guardado: gravado };
     },
 
+    /**
+     * Troca a senha: confere a senha atual, cifra `state` com uma chave nova (sal novo) e grava num único passo.
+     * Se qualquer coisa falhar, o cofre continua como estava, aberto com a senha de antes.
+     * @param {string} atual senha de agora
+     * @param {string} nova senha nova
+     * @param {unknown} state os dados atuais do app (o cofre não guarda cópia deles)
+     */
+    async changePassword(atual, nova, state) {
+      if (!session) throw new Error('O cofre está bloqueado');
+      const blob = JSON.parse(session.guardado);
+      await openJSON(blob, await deriveKey(atual, session.salt, session.iterations)); // WrongPasswordError se não bate
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const key = await deriveKey(nova, salt, iterations);
+      const proxima = { key, salt, iterations, guardado: session.guardado };
+      const gravado = await persist(state, proxima);
+      if (gravado === null) throw new VaultConflictError();
+      session = { ...proxima, guardado: gravado };
+    },
+
     lock() {
       session = null;
     },

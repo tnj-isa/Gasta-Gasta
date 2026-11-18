@@ -19,6 +19,22 @@ export function validarNovaSenha(senha, confirmacao) {
 }
 
 /**
+ * Confere a troca de senha: a atual preenchida e a nova valendo as mesmas regras de uma senha nova,
+ * mas diferente da atual. Devolve a mensagem de erro, ou null se está tudo certo.
+ * @param {string} atual
+ * @param {string} nova
+ * @param {string} confirmacao
+ * @returns {string | null}
+ */
+export function validarTrocaDeSenha(atual, nova, confirmacao) {
+  if (atual === '') return 'Digite a senha atual.';
+  const problema = validarNovaSenha(nova, confirmacao);
+  if (problema) return problema;
+  if (nova === atual) return 'A senha nova precisa ser diferente da atual.';
+  return null;
+}
+
+/**
  * Tela de senha: cria a senha no primeiro uso e destrava nas outras vezes.
  * Nada dos dados aparece antes de destravar; `aoDestravar` recebe o estado já aberto.
  * @param {HTMLElement} raiz

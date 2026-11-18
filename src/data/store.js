@@ -59,6 +59,11 @@ export function createStore(vault) {
       });
     },
 
+    /** Troca a senha do app. Entra na fila: espera os salvamentos pendentes e grava o estado de agora com a chave nova. */
+    changePassword(atual, nova) {
+      return enqueue(() => vault.changePassword(atual, nova, this.getState()));
+    },
+
     replaceState(state) {
       return enqueue(async () => {
         await vault.save(state);
