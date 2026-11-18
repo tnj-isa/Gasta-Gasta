@@ -1,6 +1,6 @@
 // Service worker: guarda o app no celular para abrir sem internet.
 // O número depois de "gasta-" é calculado por `npm run versao` (roda sozinho no `npm test`).
-const CACHE = 'gasta-37627f4a';
+const CACHE = 'gasta-5f22642e';
 
 // O leitor de notas (pasta vendor/, uns 13 MB) tem cache próprio: só é baixado de novo quando ele mesmo muda.
 const CACHE_LEITOR = 'gasta-leitor-ce487a08';

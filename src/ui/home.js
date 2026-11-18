@@ -5,6 +5,7 @@ import { monthlySummary, monthTransactions } from '../domain/summary.js';
 import { daysBetween, monthKey, monthLabel, shiftMonth, shortDate, todayISO } from '../lib/dates.js';
 import { formatBRL } from '../lib/money.js';
 import { cartaoFaturas } from './billsScreen.js';
+import { cartaoDosCartoes } from './cardsScreen.js';
 import { botaoDeIcone, el, icone } from './dom.js';
 import { alturaDoMosaico, corDaCategoria, dividirMosaico, larguraDasColunas } from './mosaico.js';
 
@@ -153,6 +154,7 @@ export function renderHome(raiz, store, { faixa, go, lock }) {
         ? mosaico(resumo, estado.categories)
         : el('p', { class: 'vazio' }, `Nenhum gasto em ${nomeDoMes} ainda. Toque em Gasto para registrar o primeiro.`)),
     cartaoFaturas(estado, todayISO(), go),
+    cartaoDosCartoes(estado, todayISO(), go) ?? '',
     el('section', {},
       el('h2', {}, `Lançamentos de ${nomeDoMes}`),
       lancamentos.length

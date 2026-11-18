@@ -1,5 +1,5 @@
 import { payBill, unpayBill } from '../domain/bills.js';
-import { buildCard, confirmStatement, syncCardStatements } from '../domain/cards.js';
+import { buildCard, confirmStatement, faturasDosCartoes, syncCardStatements } from '../domain/cards.js';
 import { upsertCard } from '../domain/model.js';
 import { todayISO } from '../lib/dates.js';
 import { formatBRL, parseBRL } from '../lib/money.js';
@@ -65,6 +65,37 @@ function formularioDeCartao({ cartao, aoSalvar, aoCancelar }) {
       botaoSalvar));
   queueMicrotask(() => nome.focus());
   return form;
+}
+
+/**
+ * O cartão "Cartões de crédito" da tela principal, com o mesmo visual do "Faturas a vencer": as próximas faturas
+ * de todos os cartões (as atrasadas primeiro), o total que falta pagar e, com mais de um cartão, o total de cada um.
+ * Sem cartão cadastrado não mostra nada (devolve `null`).
+ * @param {import('../domain/model.js').State} estado
+ * @param {string} hoje
+ * @param {(tela: string) => void} ir
+ * @returns {HTMLElement | null}
+ */
+export function cartaoDosCartoes(estado, hoje, ir) {
+  if (estado.cards.length === 0) return null;
+  const { items, totalCents, restantes, restantesCents, porCartao } = faturasDosCartoes(estado);
+  const corpo = items.length === 0
+    ? el('p', { class: 'vazio' }, 'Nenhuma fatura em aberto. As compras feitas "No cartão" aparecem aqui.')
+    : [
+      el('ul', { class: 'faturas' }, items.map((f) => linhaDaConta(f, hoje))),
+      restantes > 0 && el('p', { class: 'aviso-valor' },
+        `Mais ${restantes} ${restantes === 1 ? 'fatura' : 'faturas'} depois destas: ${formatBRL(restantesCents)}.`),
+    ];
+  const rodape = totalCents > 0 && el('div', { class: 'faturas-rodape' },
+    el('div', { class: 'total' }, el('span', {}, 'Total nos cartões'), el('strong', {}, formatBRL(totalCents))),
+    porCartao.length > 1 && el('dl', { class: 'por-mes' },
+      porCartao.map((c) => el('div', {}, el('dt', {}, c.name), el('dd', {}, formatBRL(c.totalCents))))));
+  return el('section', { class: 'faturas-secao', 'aria-label': 'Cartões de crédito' },
+    el('h2', {}, 'Cartões de crédito'),
+    el('p', { class: 'sub' }, 'O que falta pagar nas faturas'),
+    corpo, rodape,
+    el('button', { class: 'botao botao-largo', type: 'button', onclick: () => ir('cards') },
+      items.length > 0 ? 'Corrigir valor ou pagar fatura' : 'Ver cartões'));
 }
 
 /**

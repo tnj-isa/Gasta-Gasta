@@ -189,3 +189,30 @@ export function removeTransactionWithCards(s, id) {
   const novo = removeTransaction(s, id);
   return apagado?.method === 'card' && apagado.cardId ? syncCardStatements(novo, apagado.cardId) : novo;
 }
+
+/** Quantas faturas aparecem de uma vez na tela principal. */
+export const FATURAS_NA_TELA_PRINCIPAL = 6;
+
+/**
+ * O que a tela principal mostra dos cartões: as próximas faturas ainda não pagas (de todos os cartões, as atrasadas
+ * primeiro), quantas ficaram de fora, o total de tudo que falta pagar e o total de cada cartão.
+ * @param {State} s
+ * @param {number} [max] quantas faturas listar
+ * @returns {{items: Bill[], totalCents: number, restantes: number, restantesCents: number, porCartao: {cardId: string, name: string, totalCents: number}[]}}
+ */
+export function faturasDosCartoes(s, max = FATURAS_NA_TELA_PRINCIPAL) {
+  const abertas = s.bills
+    .filter((b) => b.kind === 'card_statement' && !b.paidDate)
+    .sort((a, b) => (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0));
+  const soma = (lista) => lista.reduce((total, b) => total + b.amountCents, 0);
+  const fora = abertas.slice(max);
+  return {
+    items: abertas.slice(0, max),
+    totalCents: soma(abertas),
+    restantes: fora.length,
+    restantesCents: soma(fora),
+    porCartao: s.cards
+      .map((c) => ({ cardId: c.id, name: c.name, totalCents: soma(abertas.filter((b) => b.cardId === c.id)) }))
+      .filter((c) => c.totalCents > 0),
+  };
+}

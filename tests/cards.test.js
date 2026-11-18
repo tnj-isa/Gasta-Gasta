@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  addTransactionWithCards, buildCard, cardPurchaseFields, confirmStatement, MAX_PARCELAS, parseInstallments, predictedStatements,
+  addTransactionWithCards, buildCard, cardPurchaseFields, confirmStatement, faturasDosCartoes, MAX_PARCELAS, parseInstallments, predictedStatements,
   removeTransactionWithCards, statementFor, syncCardStatements,
 } from '../src/domain/cards.js';
 import { payBill } from '../src/domain/bills.js';
@@ -371,4 +371,56 @@ test('renomear um cartão não mexe nas faturas de outro cartão nem em contas q
   s = syncCardStatements(upsertCard(s, { ...roxo, name: 'Roxinho' }), 'c1');
   assert.ok(faturasDo(s, 'c2').every((b) => b.title === 'Azul'));
   assert.equal(s.bills.find((b) => b.id === 'bol').title, 'Luz');
+});
+
+// ---- faturasDosCartoes: o que a tela principal mostra dos cartões ----
+
+const fat = (id, cardId, dueDate, amountCents, extra = {}) => ({
+  id, title: cardId === 'c1' ? 'Cartão roxo' : 'Azul', kind: 'card_statement', scope: 'personal', cardId,
+  dueDate, amountCents, paidDate: null, confirmed: false, ...extra,
+});
+const azulC2 = { id: 'c2', name: 'Azul', closingDay: 28, dueDay: 5 };
+const comDoisCartoes = (...bills) => upsertBills(upsertCard(upsertCard(emptyState(), c1), azulC2), bills);
+
+test('sem cartão nem fatura, a tela dos cartões não tem nada a mostrar', () => {
+  assert.deepEqual(faturasDosCartoes(emptyState()), { items: [], totalCents: 0, restantes: 0, restantesCents: 0, porCartao: [] });
+});
+
+test('só entram faturas de cartão ainda não pagas, da mais próxima para a mais distante, de todos os cartões', () => {
+  const s = comDoisCartoes(
+    fat('f3', 'c1', '2027-01-12', 3333),
+    fat('f1', 'c1', '2026-11-12', 3334),
+    fat('f2', 'c2', '2026-12-05', 5000),
+    fat('paga', 'c1', '2026-10-12', 9999, { paidDate: '2026-10-12', confirmed: true }),
+    { id: 'bol', title: 'Luz', kind: 'boleto', scope: 'personal', cardId: null, dueDate: '2026-11-20', amountCents: 8000, paidDate: null },
+  );
+  const r = faturasDosCartoes(s);
+  assert.deepEqual(r.items.map((b) => b.id), ['f1', 'f2', 'f3']);
+  assert.equal(r.totalCents, 3334 + 5000 + 3333);
+  assert.equal(r.restantes, 0);
+});
+
+test('fatura atrasada e ainda não paga continua na lista, no topo', () => {
+  const s = comDoisCartoes(fat('nova', 'c1', '2026-12-12', 1000), fat('velha', 'c2', '2026-10-05', 2000));
+  assert.deepEqual(faturasDosCartoes(s).items.map((b) => b.id), ['velha', 'nova']);
+});
+
+test('lista curta: mostra só as próximas e conta o que ficou de fora, sem perder nada do total', () => {
+  const faturas = Array.from({ length: 8 }, (_, i) => fat(`f${i}`, 'c1', `2027-0${i + 1}-12`, 1000 + i));
+  const s = comDoisCartoes(...faturas);
+  const r = faturasDosCartoes(s);
+  assert.equal(r.items.length, 6);
+  assert.deepEqual(r.items.map((b) => b.id), ['f0', 'f1', 'f2', 'f3', 'f4', 'f5']);
+  assert.equal(r.restantes, 2);
+  assert.equal(r.restantesCents, 1006 + 1007);
+  assert.equal(r.totalCents, faturas.reduce((soma, b) => soma + b.amountCents, 0));
+  assert.equal(faturasDosCartoes(s, 3).items.length, 3);
+  assert.equal(faturasDosCartoes(s, 3).restantes, 5);
+});
+
+test('total por cartão: só cartões com fatura a pagar, na ordem em que foram cadastrados', () => {
+  const s = comDoisCartoes(fat('a', 'c2', '2026-12-05', 5000), fat('b', 'c2', '2027-01-05', 700), fat('c', 'c1', '2026-12-12', 100, { paidDate: '2026-12-12' }));
+  assert.deepEqual(faturasDosCartoes(s).porCartao, [{ cardId: 'c2', name: 'Azul', totalCents: 5700 }]);
+  const dois = comDoisCartoes(fat('x', 'c2', '2026-12-05', 5000), fat('y', 'c1', '2026-12-12', 100));
+  assert.deepEqual(faturasDosCartoes(dois).porCartao.map((c) => [c.name, c.totalCents]), [['Cartão roxo', 100], ['Azul', 5000]]);
 });

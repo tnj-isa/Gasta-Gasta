@@ -238,9 +238,11 @@ h2 { margin: 0 0 var(--espaco-2); font-size: var(--fonte-titulo); font-weight: v
 .total { display: flex; justify-content: space-between; align-items: baseline; gap: var(--espaco-3); padding: var(--espaco-4) var(--espaco-4) var(--espaco-1); }
 .total strong { font-size: var(--fonte-valor); font-weight: var(--peso-negrito); overflow-wrap: anywhere; }
 .zerar { display: flex; justify-content: space-between; align-items: baseline; gap: var(--espaco-3); padding: var(--espaco-1) var(--espaco-4) var(--espaco-4); font-size: var(--fonte-pequena); color: var(--cor-tinta-suave); }
+.faturas-rodape .total:last-child { padding-bottom: var(--espaco-4); }
 .faturas-rodape .zerar:first-child { padding-top: var(--espaco-4); }
 .zerar b { color: var(--cor-tinta); font-weight: var(--peso-forte); overflow-wrap: anywhere; }
 .faturas-secao > .botao { margin-top: var(--espaco-3); }
+.faturas-secao > .aviso-valor { margin: var(--espaco-2) 0 0; }
 .contas section { margin-top: var(--espaco-5); }
 .contas > section:first-child { margin-top: var(--espaco-4); }
 .zerar-tela { padding-top: var(--espaco-3); background: var(--cor-papel); border-radius: var(--raio-grande); }
