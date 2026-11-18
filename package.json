@@ -1,0 +1,11 @@
+{
+  "name": "controle-financeiro",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "pretest": "node scripts/stamp-sw.mjs",
+    "test": "node --test \"tests/*.test.js\"",
+    "versao": "node scripts/stamp-sw.mjs"
+  }
+}

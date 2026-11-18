@@ -1,0 +1,46 @@
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--fonte);
+  font-size: var(--fonte-base);
+  line-height: 1.45;
+  color: var(--cor-tinta);
+  background: var(--cor-fundo);
+  font-variant-numeric: tabular-nums;
+}
+
+#app { max-width: var(--largura-maxima); min-height: 100vh; margin: 0 auto; }
+
+.faixa {
+  padding: var(--espaco-4);
+  color: var(--cor-faixa-texto);
+  background: var(--cor-faixa);
+  border-radius: 0 0 var(--raio-faixa) var(--raio-faixa);
+}
+.faixa h1 { margin: 0; font-size: var(--fonte-titulo); font-weight: var(--peso-forte); }
+
+.tela { padding: var(--espaco-4); }
+h2 { margin: 0 0 var(--espaco-2); font-size: var(--fonte-titulo); font-weight: var(--peso-forte); }
+
+.botao {
+  min-height: var(--toque);
+  padding: 0 var(--espaco-4);
+  font: inherit;
+  font-weight: var(--peso-medio);
+  color: inherit;
+  background: var(--cor-fundo);
+  border: 1.5px solid var(--cor-linha);
+  border-radius: var(--raio-pequeno);
+}
+:focus-visible { outline: 3px solid var(--cor-foco); outline-offset: 2px; }
+
+.diagnostico {
+  margin-top: var(--espaco-5);
+  padding: var(--espaco-4);
+  background: var(--cor-papel);
+  border-radius: var(--raio);
+}
+.diagnostico p { margin: 0 0 var(--espaco-3); color: var(--cor-tinta-suave); }
+.diagnostico .diagnostico-resultado { margin: var(--espaco-3) 0 0; color: var(--cor-tinta); }

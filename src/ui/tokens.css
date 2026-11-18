@@ -1,0 +1,86 @@
+/*
+  Visual escolhido: opção C, colorida por categoria (docs/visual/opcao-c.html).
+  Tudo que o app usa de cor, tamanho e fonte mora aqui. Para mudar o visual, mude estas variáveis.
+*/
+
+@font-face {
+  font-family: "Lexend";
+  font-weight: 100 900;
+  font-display: swap;
+  src: url(fonts/lexend-latin-wght-normal.woff2) format("woff2");
+}
+
+:root {
+  /* base */
+  --cor-fundo: #FFFFFF;
+  --cor-papel: #F6F4FD;
+  --cor-linha: #E6E3F2;
+  --cor-tinta: #1F1B33;
+  --cor-tinta-suave: #5B5775;
+
+  /* faixa do mês e ações */
+  --cor-faixa: #3F2BB8;
+  --cor-faixa-texto: #FFFFFF;
+  --cor-acao: #C0287A;
+  --cor-acao-texto: #FFFFFF;
+  --cor-foco: #2F6BE8;
+
+  /* situações */
+  --cor-positivo: #147A4B;
+  --cor-atrasada: #B3261E;
+  --cor-atrasada-fundo: #FDECEA;
+
+  /* etiquetas das contas a vencer (o texto é sempre branco) */
+  --cor-etiqueta-texto: #FFFFFF;
+  --cor-etiqueta-boleto: #2F6BE8;
+  --cor-etiqueta-parcela: #8A5A00;
+  --cor-etiqueta-cartao: #6B3FD6;
+
+  /* categorias: cada uma com a sua cor e a cor do texto por cima */
+  --cat-mercado: #147A4B;      --cat-mercado-texto: #FFFFFF;
+  --cat-dia-a-dia: #2F6BE8;    --cat-dia-a-dia-texto: #FFFFFF;
+  --cat-lazer: #C0287A;        --cat-lazer-texto: #FFFFFF;
+  --cat-comer-fora: #B93A08;   --cat-comer-fora-texto: #FFFFFF;
+  --cat-transporte: #0B6E83;   --cat-transporte-texto: #FFFFFF;
+  --cat-casa: #F2A31B;         --cat-casa-texto: #2B1D00;
+  --cat-saude: #BE2525;        --cat-saude-texto: #FFFFFF;
+  --cat-outros: #6F6890;       --cat-outros-texto: #FFFFFF;
+
+  /* categorias criadas por ela usam estas, na ordem */
+  --cat-extra-1: #6D28D9;      --cat-extra-1-texto: #FFFFFF;
+  --cat-extra-2: #0F766E;      --cat-extra-2-texto: #FFFFFF;
+  --cat-extra-3: #9D174D;      --cat-extra-3-texto: #FFFFFF;
+  --cat-extra-4: #3F6212;      --cat-extra-4-texto: #FFFFFF;
+  --cat-extra-5: #475569;      --cat-extra-5-texto: #FFFFFF;
+
+  /* espaçamentos */
+  --espaco-1: 4px;
+  --espaco-2: 8px;
+  --espaco-3: 12px;
+  --espaco-4: 16px;
+  --espaco-5: 24px;
+  --espaco-6: 32px;
+
+  /* cantos */
+  --raio-pequeno: 14px;
+  --raio: 16px;
+  --raio-grande: 18px;
+  --raio-faixa: 28px;
+  --raio-total: 999px;
+
+  /* letras */
+  --fonte: "Lexend", system-ui, sans-serif;
+  --fonte-pequena: 14px;
+  --fonte-base: 16px;
+  --fonte-titulo: 19px;
+  --fonte-valor: 22px;
+  --peso-normal: 400;
+  --peso-medio: 500;
+  --peso-forte: 600;
+  --peso-negrito: 700;
+
+  /* toque e telas */
+  --toque: 48px;
+  --largura-maxima: 480px;
+  --altura-barra-acoes: 96px;
+}

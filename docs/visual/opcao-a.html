@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Opção A, clara e calma</title>
+<style>
+@font-face { font-family: "Atkinson"; font-weight: 400; src: url(fonts/atkinson-hyperlegible-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: "Atkinson"; font-weight: 700; src: url(fonts/atkinson-hyperlegible-latin-700-normal.woff2) format("woff2"); }
+
+:root {
+  --fundo: #F1F6F4;
+  --papel: #FFFFFF;
+  --tinta: #1B2A31;
+  --tinta-suave: #52656D;
+  --linha: #D5E1DE;
+  --lago: #1F6F6B;
+  --lago-claro: #BEDAD6;
+  --atencao: #8A5A00;
+  --atrasada: #A8322A;
+  --atrasada-fundo: #FBEAE8;
+  --raio: 12px;
+  --toque: 48px;
+}
+* { box-sizing: border-box; margin: 0; }
+body {
+  font: 400 16px/1.45 "Atkinson", system-ui, sans-serif;
+  color: var(--tinta);
+  background: var(--fundo);
+  font-variant-numeric: tabular-nums;
+}
+.tela { max-width: 480px; margin: 0 auto; padding: 0 16px 104px; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--lago); outline-offset: 2px; }
+
+/* topo */
+.topo { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; min-height: 64px; }
+.mes { display: flex; align-items: center; }
+.mes h1 { font-size: 20px; font-weight: 700; min-width: 148px; text-align: center; }
+.icone { width: var(--toque); height: var(--toque); display: grid; place-items: center; border: 0; background: none; border-radius: 999px; }
+.icone svg { width: 24px; height: 24px; stroke: var(--tinta); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.travar { display: flex; align-items: center; gap: 6px; height: var(--toque); padding: 0 14px; border: 1px solid var(--linha); background: var(--papel); border-radius: 999px; font-size: 14px; font-weight: 700; }
+.travar svg { width: 18px; height: 18px; stroke: var(--tinta); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* a conta do mês: entrou - saiu = sobrou */
+.conta { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: end; gap: 6px; padding: 20px 0 16px; }
+.conta .op { font-size: 22px; color: var(--tinta-suave); padding-bottom: 2px; }
+.conta dt { font-size: 14px; color: var(--tinta-suave); }
+.conta dd { font-size: 17px; font-weight: 700; white-space: nowrap; }
+.conta .sobrou dd { color: var(--lago); font-size: 19px; }
+.conta .sobrou dt { color: var(--lago); font-weight: 700; }
+.trabalho { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; padding: 14px 16px; background: var(--papel); border-radius: var(--raio); }
+.trabalho span { font-size: 15px; color: var(--tinta-suave); }
+.trabalho strong { font-size: 18px; white-space: nowrap; }
+
+/* blocos */
+section { margin-top: 32px; }
+h2 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.sub { font-size: 14px; color: var(--tinta-suave); }
+
+/* categorias */
+.cats { list-style: none; padding: 0; margin-top: 8px; }
+.cats li { padding: 12px 0; border-bottom: 1px solid var(--linha); }
+.cats li:last-child { border-bottom: 0; }
+.cats .linha { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.cats .nome { font-size: 16px; }
+.cats .valor { font-weight: 700; white-space: nowrap; }
+.barra { height: 8px; margin-top: 8px; background: var(--lago-claro); border-radius: 99px; overflow: hidden; }
+.barra i { display: block; height: 100%; background: var(--lago); border-radius: 99px; }
+
+/* faturas */
+.faturas { list-style: none; padding: 0; margin-top: 12px; background: var(--papel); border-radius: var(--raio); overflow: hidden; }
+.fatura { display: grid; grid-template-columns: 56px 1fr auto; gap: 12px; align-items: center; padding: 12px 16px; min-height: 68px; border-bottom: 1px solid var(--linha); }
+.data { text-align: center; line-height: 1.1; }
+.data b { display: block; font-size: 22px; }
+.data span { font-size: 14px; color: var(--tinta-suave); }
+.fatura .titulo { font-weight: 700; }
+.fatura .tipo { font-size: 14px; color: var(--tinta-suave); }
+.fatura .preco { font-weight: 700; white-space: nowrap; }
+.fatura.atrasada { background: var(--atrasada-fundo); }
+.fatura.atrasada .data b, .fatura.atrasada .data span { color: var(--atrasada); }
+.fatura.atrasada .tipo { color: var(--atrasada); font-weight: 700; }
+.fatura.logo .data b { color: var(--atencao); }
+.fatura.logo .tipo { color: var(--atencao); }
+.total { display: flex; justify-content: space-between; align-items: baseline; padding: 16px; }
+.total strong { font-size: 20px; }
+.zerar { padding: 0 16px 16px; font-size: 14px; color: var(--tinta-suave); display: flex; justify-content: space-between; gap: 12px; }
+.zerar b { color: var(--tinta); }
+
+/* barra de ações */
+.acoes { position: fixed; left: 0; right: 0; bottom: 0; background: var(--papel); border-top: 1px solid var(--linha); padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+.acoes div { max-width: 480px; margin: 0 auto; display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; }
+.btn { height: 60px; padding: 4px; border-radius: 14px; border: 1px solid var(--linha); background: var(--papel); font-size: 14px; font-weight: 700; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.btn.principal { background: var(--lago); border-color: var(--lago); color: #fff; }
+.btn svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+</head>
+<body>
+<main class="tela">
+
+  <header class="topo">
+    <div class="mes">
+      <button class="icone" aria-label="Mês anterior"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <h1>Novembro de 2026</h1>
+      <button class="icone" aria-label="Próximo mês"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+    </div>
+    <button class="travar"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>Travar</button>
+  </header>
+
+  <dl class="conta" aria-label="Resumo do mês">
+    <div><dt>Entrou</dt><dd>R$ 4.200,00</dd></div>
+    <span class="op" aria-hidden="true">−</span>
+    <div><dt>Saiu</dt><dd>R$ 2.850,00</dd></div>
+    <span class="op" aria-hidden="true">=</span>
+    <div class="sobrou"><dt>Sobrou</dt><dd>R$ 1.350,00</dd></div>
+  </dl>
+
+  <div class="trabalho">
+    <span>Ganho depois dos custos do trabalho</span>
+    <strong>R$ 3.600,00</strong>
+  </div>
+
+  <section>
+    <h2>Para onde foi o dinheiro</h2>
+    <p class="sub">Pessoal R$ 2.250,00 e trabalho R$ 600,00</p>
+    <ul class="cats">
+      <li><div class="linha"><span class="nome">Mercado</span><span class="valor">R$ 900,00</span></div><div class="barra"><i style="width:31.6%"></i></div></li>
+      <li><div class="linha"><span class="nome">Dia a dia</span><span class="valor">R$ 650,00</span></div><div class="barra"><i style="width:22.8%"></i></div></li>
+      <li><div class="linha"><span class="nome">Casa</span><span class="valor">R$ 500,00</span></div><div class="barra"><i style="width:17.5%"></i></div></li>
+      <li><div class="linha"><span class="nome">Lazer</span><span class="valor">R$ 400,00</span></div><div class="barra"><i style="width:14%"></i></div></li>
+      <li><div class="linha"><span class="nome">Outros</span><span class="valor">R$ 400,00</span></div><div class="barra"><i style="width:14%"></i></div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Faturas a vencer</h2>
+    <p class="sub">Nos próximos 30 dias</p>
+    <ul class="faturas">
+      <li class="fatura atrasada"><div class="data"><b>12</b><span>nov</span></div><div><div class="titulo">Condomínio</div><div class="tipo">Boleto atrasado</div></div><div class="preco">R$ 410,00</div></li>
+      <li class="fatura logo"><div class="data"><b>22</b><span>nov</span></div><div><div class="titulo">Internet</div><div class="tipo">Boleto, vence em 4 dias</div></div><div class="preco">R$ 119,90</div></li>
+      <li class="fatura"><div class="data"><b>28</b><span>nov</span></div><div><div class="titulo">Notebook</div><div class="tipo">Parcela 4 de 10</div></div><div class="preco">R$ 350,00</div></li>
+      <li class="fatura"><div class="data"><b>10</b><span>dez</span></div><div><div class="titulo">Fatura Nubank</div><div class="tipo">Cartão de crédito</div></div><div class="preco">R$ 1.240,00</div></li>
+      <li class="fatura"><div class="data"><b>15</b><span>dez</span></div><div><div class="titulo">Curso de inglês</div><div class="tipo">Parcela 3 de 6</div></div><div class="preco">R$ 290,00</div></li>
+      <li>
+        <div class="total"><span>Total a vencer</span><strong>R$ 2.409,90</strong></div>
+        <div class="zerar"><span>Faltam para zerar tudo</span><b>R$ 18.430,00</b></div>
+      </li>
+    </ul>
+  </section>
+</main>
+
+<nav class="acoes" aria-label="Registrar">
+  <div>
+    <button class="btn principal"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Fotografar nota</button>
+    <button class="btn"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Gasto</button>
+    <button class="btn"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Entrada</button>
+  </div>
+</nav>
+</body>
+</html>
