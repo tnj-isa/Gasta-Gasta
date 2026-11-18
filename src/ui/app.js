@@ -1,6 +1,7 @@
 import { indexedDbStorage } from '../data/storage.js';
 import { createStore } from '../data/store.js';
 import { createAutoLock, createVault } from '../data/vault.js';
+import { atualizacao } from './atualizacao.js';
 import { el } from './dom.js';
 import { renderEntry } from './entry.js';
 import { renderHome } from './home.js';
@@ -48,10 +49,25 @@ function comecarAutoBloqueio(estado) {
   autoLock.touch();
 }
 
-renderers.set('lock', (container, { store: cofre, go: ir }) => renderLock(container, cofre, (estado) => {
-  comecarAutoBloqueio(estado);
-  ir('home');
-}));
+/** Aviso na tela de senha: o app baixou uma versão nova. Atualizar aqui não perde nada, porque nada está aberto. */
+function avisoDeAtualizacao() {
+  return el('div', { class: 'aviso-atualizacao', role: 'status' },
+    el('p', {}, 'Tem uma versão nova do app.'),
+    el('button', { class: 'botao botao-principal', type: 'button', onclick: () => location.reload() }, 'Atualizar agora'));
+}
+
+renderers.set('lock', (container, { store: cofre, go: ir }) => {
+  renderLock(container, cofre, (estado) => {
+    comecarAutoBloqueio(estado);
+    ir('home');
+  });
+  let mostrado = false;
+  atualizacao.aoFicarPronta(() => {
+    if (mostrado || currentScreen() !== 'lock' || !container.isConnected) return;
+    mostrado = true;
+    container.prepend(avisoDeAtualizacao());
+  });
+});
 
 renderers.set('home', (container, api) => renderHome(container, api.store, api));
 

@@ -1,4 +1,5 @@
 import { mount } from './app.js';
+import './atualizacao.js'; // começa a escutar a chegada de versão nova (antes de registrar o service worker)
 import './instalacao.js'; // começa a escutar o aviso de instalação do Chrome
 
 mount(document.getElementById('app'));
