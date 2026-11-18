@@ -6,12 +6,14 @@ import { el } from './dom.js';
 import { renderEntry } from './entry.js';
 import { renderHome } from './home.js';
 import { renderLock } from './lock.js';
+import { renderPhoto } from './photo.js';
+import { renderSettings } from './settings.js';
 
-export const SCREENS = ['lock', 'home', 'entry', 'bills', 'cards', 'settings'];
+export const SCREENS = ['lock', 'home', 'entry', 'photo', 'bills', 'cards', 'settings'];
 
 const AUTO_LOCK_PADRAO_MS = 180000;
 
-/** @type {Map<string, (container: HTMLElement, api: {go: typeof go, store: ReturnType<typeof createStore>, faixa: HTMLElement, params: object, lock: typeof lockApp}) => void>} */
+/** @type {Map<string, (container: HTMLElement, api: {go: typeof go, store: ReturnType<typeof createStore>, faixa: HTMLElement, params: object, lock: typeof lockApp, rearmar: () => void}) => void>} */
 const renderers = new Map();
 let tela = null;
 let faixa = null;
@@ -56,9 +58,15 @@ function avisoDeAtualizacao() {
     el('button', { class: 'botao botao-principal', type: 'button', onclick: () => location.reload() }, 'Atualizar agora'));
 }
 
+/** Pede ao Chrome para não apagar os dados sozinho se faltar espaço. Se ele recusar, nada muda. */
+function pedirArmazenamentoProtegido() {
+  navigator.storage?.persist?.().catch(() => {});
+}
+
 renderers.set('lock', (container, { store: cofre, go: ir }) => {
   renderLock(container, cofre, (estado) => {
     comecarAutoBloqueio(estado);
+    pedirArmazenamentoProtegido();
     ir('home');
   });
   let mostrado = false;
@@ -70,6 +78,11 @@ renderers.set('lock', (container, { store: cofre, go: ir }) => {
 });
 
 renderers.set('home', (container, api) => renderHome(container, api.store, api));
+
+renderers.set('photo', (container, { store: cofre, go: ir, faixa: topo }) => renderPhoto(
+  container, cofre, () => ir('home'), { faixa: topo }));
+
+renderers.set('settings', (container, api) => renderSettings(container, api.store, api));
 
 renderers.set('entry', (container, { store: cofre, go: ir, faixa: topo, params }) => renderEntry(
   container, cofre, () => ir('home'), { kind: params.kind, faixa: topo }));
@@ -94,7 +107,7 @@ export function go(nome, params = {}) {
   tela.className = 'tela';
   faixaPadrao();
   const render = renderers.get(nome);
-  if (render) render(tela, { go, store, faixa, params, lock: lockApp });
+  if (render) render(tela, { go, store, faixa, params, lock: lockApp, rearmar: () => comecarAutoBloqueio(store.getState()) });
   else emConstrucao(tela);
 }
 

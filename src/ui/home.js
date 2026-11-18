@@ -1,13 +1,15 @@
+import { shouldRemindBackup } from '../data/backup.js';
 import { removeTransaction } from '../domain/model.js';
 import { monthlySummary, monthTransactions } from '../domain/summary.js';
-import { monthKey, monthLabel, shiftMonth, shortDate, todayISO } from '../lib/dates.js';
+import { daysBetween, monthKey, monthLabel, shiftMonth, shortDate, todayISO } from '../lib/dates.js';
 import { formatBRL } from '../lib/money.js';
-import { el, icone } from './dom.js';
+import { botaoDeIcone, el, icone } from './dom.js';
 import { alturaDoMosaico, corDaCategoria, dividirMosaico, larguraDasColunas } from './mosaico.js';
 
 const ICONE_ANTERIOR = 'M15 5l-7 7 7 7';
 const ICONE_PROXIMO = 'M9 5l7 7-7 7';
 const ICONE_MAIS = 'M12 5v14M5 12h14';
+const ICONE_CAMERA = ['M4 8h3l2-3h6l2 3h3v11H4z', 'M12 9.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z'];
 const ICONE_CADEADO = ['M7 11h10a2 2 0 012 2v6a2 2 0 01-2 2H7a2 2 0 01-2-2v-6a2 2 0 012-2z', 'M8 11V8a4 4 0 018 0v3'];
 
 let mes = null;
@@ -20,10 +22,6 @@ export function mesAberto() {
 
 export function definirMes(chave) {
   mes = chave;
-}
-
-function botaoDeIcone(rotulo, caminho, aoClicar) {
-  return el('button', { class: 'icone', type: 'button', 'aria-label': rotulo, onclick: aoClicar }, icone(caminho));
 }
 
 function itemDoResumo(rotulo, centavos, classe = '') {
@@ -58,7 +56,7 @@ function mosaico(resumo, categorias) {
 function linhaDoLancamento(t, categorias, aoApagar) {
   const nomeCategoria = categorias.find((c) => c.id === t.categoryId)?.name ?? 'Outros';
   const entrada = t.kind === 'income';
-  const titulo = t.note || (entrada ? 'Entrada' : nomeCategoria);
+  const titulo = t.note || t.merchant || (entrada ? 'Entrada' : nomeCategoria);
   const detalhe = entrada ? shortDate(t.date) : `${shortDate(t.date)}, ${nomeCategoria}`;
   const acoes = el('div', { class: 'lancamento-acoes' });
   const mostrarApagar = () => acoes.replaceChildren(
@@ -76,6 +74,20 @@ function linhaDoLancamento(t, categorias, aoApagar) {
         el('div', { class: 'lancamento-detalhe' }, detalhe, t.scope === 'work' && el('span', { class: 'etq' }, 'Trabalho'))),
       el('div', { class: `lancamento-valor${entrada ? ' entrada' : ''}` }, `${entrada ? '+' : ''}${formatBRL(t.amountCents)}`)),
     acoes);
+}
+
+/** Lembrete de cópia de segurança: só aparece se há dados e faz 30 dias (ou nunca houve cópia). */
+function lembreteDeCopia(estado, ir) {
+  const temDados = estado.transactions.length + estado.bills.length + estado.cards.length + estado.recurring.length > 0;
+  const ultima = estado.settings.lastBackup;
+  const hoje = todayISO();
+  if (!shouldRemindBackup(ultima, hoje, temDados)) return null;
+  const texto = ultima === null
+    ? 'Você ainda não salvou uma cópia de segurança. Se perder o celular, perde os dados.'
+    : `Sua última cópia de segurança foi há ${daysBetween(ultima, hoje)} dias.`;
+  return el('section', { class: 'lembrete', role: 'note' },
+    el('p', {}, texto),
+    el('button', { class: 'botao botao-principal', type: 'button', onclick: () => ir('settings') }, 'Salvar cópia agora'));
 }
 
 /**
@@ -115,6 +127,7 @@ export function renderHome(raiz, store, { faixa, go, lock }) {
 
   raiz.classList.add('com-barra');
   raiz.append(
+    lembreteDeCopia(estado, go) ?? '',
     el('section', {},
       el('h2', {}, 'Para onde foi o dinheiro'),
       el('dl', { class: 'divisao' },
@@ -128,8 +141,13 @@ export function renderHome(raiz, store, { faixa, go, lock }) {
       lancamentos.length
         ? el('ul', { class: 'lancamentos' }, lancamentos.map((t) => linhaDoLancamento(t, estado.categories, apagar)))
         : el('p', { class: 'vazio' }, 'Nada lançado neste mês.')),
+    el('section', {},
+      el('button', { class: 'botao botao-largo', type: 'button', onclick: () => go('settings') }, 'Configurações e cópia de segurança')),
     el('nav', { class: 'acoes', 'aria-label': 'Registrar' },
       el('div', {},
         el('button', { class: 'btn', type: 'button', onclick: () => go('entry', { kind: 'expense' }) }, icone(ICONE_MAIS), 'Gasto'),
+        el('div', { class: 'centro' },
+          el('button', { class: 'camera', type: 'button', 'aria-label': 'Fotografar nota', onclick: () => go('photo') }, icone(...ICONE_CAMERA)),
+          el('span', { class: 'camera-rotulo', 'aria-hidden': 'true' }, 'Fotografar nota')),
         el('button', { class: 'btn', type: 'button', onclick: () => go('entry', { kind: 'income' }) }, icone(ICONE_MAIS), 'Entrada'))));
 }

@@ -22,21 +22,28 @@ function arquivos(pasta) {
   return achados;
 }
 
-/** Lê a lista ASSETS do sw.js sem rodar o arquivo. */
-function listaDoServiceWorker() {
+/** Lê uma lista (ASSETS ou LEITOR) do sw.js sem rodar o arquivo. */
+function listaDoServiceWorker(nome = 'ASSETS') {
   const texto = ler('sw.js');
-  const bloco = /const ASSETS = \[([\s\S]*?)\];/.exec(texto);
-  assert.ok(bloco, 'sw.js precisa ter "const ASSETS = [ ... ];"');
+  const bloco = new RegExp(`const ${nome} = \\[([\\s\\S]*?)\\];`).exec(texto);
+  assert.ok(bloco, `sw.js precisa ter "const ${nome} = [ ... ];"`);
   return [...bloco[1].matchAll(/['"]\.\/([^'"]*)['"]/g)].map((m) => m[1]);
 }
 
 test('o service worker guarda todos os arquivos do app, e só arquivos que existem', () => {
-  const guardados = listaDoServiceWorker();
+  const guardados = [...listaDoServiceWorker('ASSETS'), ...listaDoServiceWorker('LEITOR')];
   const doApp = ['index.html', 'manifest.webmanifest', ...arquivos('src'), ...arquivos('icons'), ...arquivos('vendor')];
   const faltando = doApp.filter((f) => !guardados.includes(f));
   assert.deepEqual(faltando, [], 'arquivos que o app usa e o sw.js não guarda (o app não abriria offline)');
   const fantasmas = guardados.filter((f) => f !== '' && !existsSync(join(raiz, f)));
   assert.deepEqual(fantasmas, [], 'arquivos listados no sw.js que não existem (a instalação falharia)');
+});
+
+test('o leitor de notas (vendor/) fica num cache só dele, para não ser baixado de novo a cada atualização do app', () => {
+  const doLeitor = listaDoServiceWorker('LEITOR');
+  assert.deepEqual([...doLeitor].sort(), arquivos('vendor').sort(), 'LEITOR guarda exatamente os arquivos de vendor/');
+  const doApp = listaDoServiceWorker('ASSETS');
+  assert.deepEqual(doApp.filter((f) => f.startsWith('vendor/')), [], 'vendor/ não entra na lista do app');
 });
 
 test('o cache é cache primeiro e a versão no nome acompanha o conteúdo dos arquivos', async () => {
@@ -46,9 +53,13 @@ test('o cache é cache primeiro e a versão no nome acompanha o conteúdo dos ar
   assert.match(texto, /skipWaiting/);
   assert.match(texto, /caches\.delete/);
   // Se um arquivo do app mudou e a versão não, ela não receberia a atualização no celular.
-  const { calcularVersao } = await import('../scripts/stamp-sw.mjs');
+  const { calcularVersao, calcularVersaoDoLeitor } = await import('../scripts/stamp-sw.mjs');
   const [, versaoNoArquivo] = /const CACHE = 'gasta-([0-9a-f]{8})'/.exec(texto);
   assert.equal(versaoNoArquivo, calcularVersao(raiz), 'rode "npm run versao" para atualizar a versão do cache');
+  const [, versaoDoLeitor] = /const CACHE_LEITOR = 'gasta-leitor-([0-9a-f]{8})'/.exec(texto);
+  assert.equal(versaoDoLeitor, calcularVersaoDoLeitor(raiz), 'rode "npm run versao" para atualizar a versão do cache do leitor');
+  assert.match(texto, /caches\.open\(CACHE_LEITOR\)/);
+  assert.match(texto, /n !== CACHE && n !== CACHE_LEITOR/, 'a limpeza não pode apagar o cache do leitor');
 });
 
 test('o service worker usa só caminhos relativos, para funcionar em /Gasta-Gasta/', () => {

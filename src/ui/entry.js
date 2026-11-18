@@ -3,56 +3,49 @@ import { todayISO } from '../lib/dates.js';
 import { parseBRL } from '../lib/money.js';
 import { el } from './dom.js';
 import { corDaCategoria } from './mosaico.js';
+import { grupo } from './opcoes.js';
 
-/**
- * Grupo de opções em que só uma fica marcada (como os botões de rádio, mas grandes para o dedo).
- * A opção marcada ganha um "✓" além da cor, para não depender só da cor.
- */
-function grupo({ nome, opcoes, inicial, aoMudar, dividido = false }) {
-  let escolhido = inicial;
-  const botoes = new Map();
-  const pintar = () => botoes.forEach((botao, valor) => botao.setAttribute('aria-checked', String(valor === escolhido)));
-  const raiz = el('div', { class: `opcoes${dividido ? ' dividido' : ''}`, role: 'radiogroup', 'aria-label': nome });
-  for (const opcao of opcoes) {
-    const botao = el('button', {
-      class: 'opcao', type: 'button', role: 'radio', 'aria-checked': 'false',
-      onclick: () => { escolhido = opcao.valor; pintar(); aoMudar?.(escolhido); },
-    }, opcao.rotulo);
-    if (opcao.cor) {
-      botao.style.setProperty('--fundo', opcao.cor.fundo);
-      botao.style.setProperty('--texto', opcao.cor.texto);
-    }
-    botoes.set(opcao.valor, botao);
-    raiz.append(botao);
-  }
-  pintar();
-  return { elemento: raiz, valor: () => escolhido };
+/** 3540 vira "35,40": o texto que vai dentro do campo de valor. */
+function centavosParaCampo(centavos) {
+  return `${Math.trunc(centavos / 100)},${String(centavos % 100).padStart(2, '0')}`;
 }
 
 /**
  * Tela de digitar um gasto ou uma entrada. Só o valor é obrigatório: categoria "Outros",
  * pessoal e a data de hoje já vêm marcados.
+ * A tela da foto da nota usa esta mesma tela, já preenchida (`inicial`), só para gasto (`somenteGasto`),
+ * com o valor lido em destaque (`destaque`) e montando o lançamento do seu jeito (`construir`).
  * @param {HTMLElement} raiz
  * @param {{getState(): any, commit(mutator: (s: any) => any): Promise<any>}} store
  * @param {(salvo: object | null) => void} aoTerminar recebe o lançamento salvo, ou null se cancelou
- * @param {{kind?: 'expense'|'income', faixa?: HTMLElement}} [inicio]
+ * @param {{
+ *   kind?: 'expense'|'income', faixa?: HTMLElement, titulo?: string,
+ *   inicial?: {amountCents?: number | null, date?: string, merchant?: string, categoryId?: string | null, scope?: 'personal'|'work'},
+ *   somenteGasto?: boolean, mostrarLocal?: boolean, destaque?: string, antes?: Node,
+ *   construir?: (campos: object) => object,
+ * }} [opcoes]
  */
-export function renderEntry(raiz, store, aoTerminar, { kind = 'expense', faixa } = {}) {
+export function renderEntry(raiz, store, aoTerminar, {
+  kind = 'expense', faixa, titulo, inicial = {}, somenteGasto = false, mostrarLocal = false, destaque, antes, construir,
+} = {}) {
   const categorias = store.getState().categories;
   let tipo = kind;
 
   const erro = el('p', { class: 'erro', role: 'alert' });
   const campoValor = el('input', {
-    class: 'campo campo-valor', id: 'valor', type: 'text', inputmode: 'decimal',
+    class: `campo campo-valor${destaque ? ' lido' : ''}`, id: 'valor', type: 'text', inputmode: 'decimal',
     autocomplete: 'off', placeholder: '0,00', enterkeyhint: 'done',
+    value: Number.isSafeInteger(inicial.amountCents) && inicial.amountCents > 0 ? centavosParaCampo(inicial.amountCents) : null,
+    'aria-describedby': destaque ? 'valor-aviso' : null,
   });
-  const campoData = el('input', { class: 'campo', id: 'data', type: 'date', value: todayISO() });
+  const campoData = el('input', { class: 'campo', id: 'data', type: 'date', value: inicial.date ?? todayISO() });
   const campoNota = el('input', { class: 'campo', id: 'nota', type: 'text', autocomplete: 'off', maxlength: '80' });
+  const campoLocal = el('input', { class: 'campo', id: 'local', type: 'text', autocomplete: 'off', maxlength: '60', value: inicial.merchant || null });
 
   const secaoGasto = el('div', { class: 'secao-gasto' });
   const atualizar = () => {
     secaoGasto.hidden = tipo !== 'expense';
-    faixa?.replaceChildren(el('h1', {}, tipo === 'expense' ? 'Novo gasto' : 'Nova entrada'));
+    faixa?.replaceChildren(el('h1', {}, titulo ?? (tipo === 'expense' ? 'Novo gasto' : 'Nova entrada')));
   };
 
   const tipoGrupo = grupo({
@@ -60,13 +53,16 @@ export function renderEntry(raiz, store, aoTerminar, { kind = 'expense', faixa }
     opcoes: [{ valor: 'expense', rotulo: 'Gasto' }, { valor: 'income', rotulo: 'Entrada' }],
     aoMudar: (valor) => { tipo = valor; atualizar(); },
   });
+  const categoriaInicial = categorias.some((c) => c.id === inicial.categoryId)
+    ? inicial.categoryId
+    : (categorias.some((c) => c.id === 'outros') ? 'outros' : categorias[0]?.id);
   const categoriaGrupo = grupo({
     nome: 'Categoria',
-    inicial: categorias.some((c) => c.id === 'outros') ? 'outros' : categorias[0]?.id,
+    inicial: categoriaInicial,
     opcoes: categorias.map((c) => ({ valor: c.id, rotulo: c.name, cor: corDaCategoria(c.id, categorias) })),
   });
   const escopoGrupo = grupo({
-    nome: 'Gasto pessoal ou do trabalho', dividido: true, inicial: 'personal',
+    nome: 'Gasto pessoal ou do trabalho', dividido: true, inicial: inicial.scope ?? 'personal',
     opcoes: [{ valor: 'personal', rotulo: 'Pessoal' }, { valor: 'work', rotulo: 'Trabalho' }],
   });
   secaoGasto.append(
@@ -92,13 +88,22 @@ export function renderEntry(raiz, store, aoTerminar, { kind = 'expense', faixa }
       return;
     }
     const nota = campoNota.value.trim();
-    const lancamento = {
-      id: newId(),
+    const campos = {
       kind: tipo,
       amountCents,
       date: campoData.value,
       scope: tipo === 'expense' ? escopoGrupo.valor() : 'personal',
-      ...(tipo === 'expense' ? { categoryId: categoriaGrupo.valor() } : {}),
+      categoryId: tipo === 'expense' ? categoriaGrupo.valor() : null,
+      note: nota,
+      merchant: campoLocal.value.trim(),
+    };
+    const lancamento = construir ? construir(campos) : {
+      id: newId(),
+      kind: campos.kind,
+      amountCents,
+      date: campos.date,
+      scope: campos.scope,
+      ...(tipo === 'expense' ? { categoryId: campos.categoryId } : {}),
       ...(nota ? { note: nota } : {}),
     };
     salvando = true;
@@ -117,10 +122,14 @@ export function renderEntry(raiz, store, aoTerminar, { kind = 'expense', faixa }
 
   const botaoSalvar = el('button', { class: 'botao botao-principal', type: 'submit' }, 'Salvar');
   raiz.append(el('form', { class: 'entrada', novalidate: true, onsubmit: salvar },
-    tipoGrupo.elemento,
+    antes,
+    !somenteGasto && tipoGrupo.elemento,
     el('label', { class: 'rotulo', for: 'valor' }, 'Valor em reais'),
+    destaque && el('p', { class: 'aviso-valor', id: 'valor-aviso', role: 'status' }, destaque),
     campoValor,
     secaoGasto,
+    mostrarLocal && el('label', { class: 'rotulo', for: 'local' }, 'Local (opcional)'),
+    mostrarLocal && campoLocal,
     el('label', { class: 'rotulo', for: 'data' }, 'Data'),
     campoData,
     el('label', { class: 'rotulo', for: 'nota' }, 'Descrição (opcional)'),

@@ -31,3 +31,8 @@ export function icone(...caminhos) {
   }
   return svg;
 }
+
+/** Botão redondo só com um ícone (precisa de um nome para quem usa leitor de tela). */
+export function botaoDeIcone(rotulo, caminho, aoClicar) {
+  return el('button', { class: 'icone', type: 'button', 'aria-label': rotulo, onclick: aoClicar }, icone(caminho));
+}
