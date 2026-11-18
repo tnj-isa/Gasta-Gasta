@@ -1,6 +1,7 @@
 import { payBill, unpayBill } from '../domain/bills.js';
 import {
-  buildCard, cardPurchases, cardUsage, confirmStatement, faturasDosCartoes, removeCard, removeStatement, removeTransactionWithCards, syncCardStatements,
+  buildCard, cardPurchases, cardUsage, confirmStatement, faturasDosCartoes, removeCard, removeStatement, removeStatementAndPurchases,
+  removeTransactionWithCards, statementPurchases, syncCardStatements,
 } from '../domain/cards.js';
 import { upsertCard } from '../domain/model.js';
 import { shortDate, todayISO } from '../lib/dates.js';
@@ -13,6 +14,9 @@ const ICONE_VOLTAR = 'M15 5l-7 7 7 7';
 const PAGAS_VISIVEIS = 3;
 
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+
+/** O nome de uma compra na lista: a descrição, o local ou, na falta deles, a categoria. */
+const tituloDaCompra = (t, categorias) => t.note || t.merchant || (categorias.find((c) => c.id === t.categoryId)?.name ?? 'Outros');
 
 /** Texto de "dia 1 a 31" digitado: só 1 ou 2 números, senão NaN (o cartão recusa com a mensagem certa). */
 const lerDia = (texto) => (/^\d{1,2}$/.test(texto.trim()) ? Number(texto.trim()) : NaN);
@@ -146,7 +150,6 @@ export function renderCards(raiz, store, { faixa, go }) {
   function acoesDaFatura(fatura) {
     const caixa = el('div', { class: 'fatura-acoes' });
     const contexto = `${fatura.title}, vence ${fatura.dueDate.split('-').reverse().join('/')}`;
-    const apagavel = fatura.paidDate || fatura.confirmed === true;
     const botaoApagar = () => el('button', {
       class: 'botao botao-discreto', type: 'button', 'aria-label': `Apagar fatura: ${contexto}`, onclick: perguntarApagar,
     }, 'Apagar');
@@ -169,20 +172,44 @@ export function renderCards(raiz, store, { faixa, go }) {
           },
         }, 'Marcar como paga'),
         el('button', { class: 'botao', type: 'button', 'aria-label': `Pagar em outro dia: ${contexto}`, onclick: outroDia }, 'Outro dia'),
-        apagavel ? botaoApagar() : null,
+        botaoApagar(),
       ].filter(Boolean));
     };
     const outroDia = () => perguntarDataDoPagamento(caixa, {
       hoje: todayISO(), contexto, aoCancelar: normal,
       aoConfirmar: (data) => mudar((s) => payBill(s, fatura.id, data), `Fatura paga em ${shortDate(data)}. Isso não vira gasto novo: as compras já estão lançadas.`),
     });
-    const perguntarApagar = () => caixa.replaceChildren(
-      el('span', { class: 'confirmar' }, 'Apagar esta fatura? Se ainda há compras nela, ela volta como prevista, com a soma das compras. As compras não são apagadas.'),
-      el('button', { class: 'botao', type: 'button', onclick: normal }, 'Cancelar'),
-      el('button', {
-        class: 'botao botao-perigo', type: 'button',
-        onclick: (e) => { e.currentTarget.disabled = true; mudar((s) => removeStatement(s, fatura.id), 'Fatura apagada.'); },
-      }, 'Apagar mesmo'));
+    const perguntarApagar = () => {
+      const estado = store.getState();
+      const compras = statementPurchases(estado, fatura.id);
+      const cancelar = el('button', { class: 'botao', type: 'button', onclick: normal }, 'Cancelar');
+      const apagar = (mutator, mensagem) => (e) => { e.currentTarget.disabled = true; mudar(mutator, mensagem); };
+      const perigo = (rotulo, aoClicar) => el('button', { class: 'botao botao-perigo', type: 'button', onclick: aoClicar }, rotulo);
+      if (compras.length === 0) {
+        caixa.replaceChildren(
+          el('span', { class: 'confirmar' }, 'Apagar esta fatura?'),
+          cancelar,
+          perigo('Apagar mesmo', apagar((s) => removeStatement(s, fatura.id), 'Fatura apagada.')));
+        return;
+      }
+      const nomes = compras.slice(0, 3).map((t) => tituloDaCompra(t, estado.categories));
+      const resto = compras.length - nomes.length;
+      const formada = `Ela é formada por ${plural(compras.length, 'compra', 'compras')} (${formatBRL(compras.reduce((soma, t) => soma + t.amountCents, 0))}): `
+        + `${nomes.join(', ')}${resto > 0 ? ` e mais ${resto}` : ''}.`;
+      const comCompras = apagar((s) => removeStatementAndPurchases(s, fatura.id), 'Fatura e compras apagadas. As outras faturas foram recalculadas.');
+      if (fatura.paidDate || fatura.confirmed === true) {
+        caixa.replaceChildren(
+          el('span', { class: 'confirmar' }, `Apagar esta fatura? ${formada} "Só a fatura" faz ela voltar como prevista, com a soma das compras. "Fatura e compras" apaga tudo, e as compras saem do "Saiu".`),
+          cancelar,
+          perigo('Só a fatura', apagar((s) => removeStatement(s, fatura.id), 'Fatura apagada. Ela voltou como prevista.')),
+          perigo('Fatura e compras', comCompras));
+        return;
+      }
+      caixa.replaceChildren(
+        el('span', { class: 'confirmar' }, `Apagar esta fatura prevista? ${formada} As compras serão apagadas, também das outras faturas em que foram parceladas, e saem do "Saiu".`),
+        cancelar,
+        perigo('Apagar fatura e compras', comCompras));
+    };
     const corrigir = () => {
       const campo = el('input', {
         class: 'campo campo-valor', type: 'text', inputmode: 'decimal', autocomplete: 'off', value: centavosParaCampo(fatura.amountCents),
@@ -219,7 +246,7 @@ export function renderCards(raiz, store, { faixa, go }) {
   /** Uma compra no cartão, com Apagar em dois passos (as faturas do cartão são recalculadas). */
   function linhaDaCompra(t, estado) {
     const categoria = estado.categories.find((c) => c.id === t.categoryId)?.name ?? 'Outros';
-    const titulo = t.note || t.merchant || categoria;
+    const titulo = tituloDaCompra(t, estado.categories);
     const vezes = t.installments > 1 ? `, em ${t.installments}x` : '';
     const ano = t.date.slice(0, 4) === todayISO().slice(0, 4) ? '' : `/${t.date.slice(0, 4)}`;
     const acoes = el('div', { class: 'lancamento-acoes' });
@@ -290,7 +317,7 @@ export function renderCards(raiz, store, { faixa, go }) {
         : [
           aPagar.length > 0 && el('ul', { class: 'faturas' }, aPagar.map((f) => linhaDaConta(f, hoje, acoesDaFatura(f)))),
           temPrevista && el('p', { class: 'aviso-valor' },
-            'Fatura prevista é a soma das compras. Quando a fatura real chegar, toque em "Corrigir valor". Para tirar uma fatura prevista, apague as compras dela.'),
+            'Fatura prevista é a soma das compras. Quando a fatura real chegar, toque em "Corrigir valor". Para tirar uma fatura prevista, use Apagar nela: as compras que a formam também são apagadas.'),
           pagas.length > 0 && el('h3', {}, 'Pagas'),
           pagas.length > 0 && el('ul', { class: 'faturas' }, pagas.map((f) => linhaDaConta(f, hoje, acoesDaFatura(f)))),
         ],

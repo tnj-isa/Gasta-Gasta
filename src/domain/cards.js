@@ -65,6 +65,27 @@ export function statementFor(card, purchaseDate) {
 }
 
 /**
+ * As partes de uma compra no cartão, uma por fatura: compra em `n` vezes vai em `n` faturas seguidas,
+ * com o resto dos centavos na primeira. Cada data vem do mês do primeiro fechamento mais `i` meses.
+ * @param {Card} card
+ * @param {Transaction} t
+ * @returns {{dueDate: string, cents: number}[]}
+ */
+function partesDaCompra(card, t) {
+  const n = Number.isInteger(t.installments) && t.installments >= 1 && t.installments <= MAX_PARCELAS ? t.installments : 1;
+  const base = Math.floor(t.amountCents / n);
+  const resto = t.amountCents - base * n;
+  const mesDoPrimeiroFechamento = monthKey(statementFor(card, t.date).closing);
+  const partes = [];
+  for (let i = 0; i < n; i += 1) {
+    const cents = i === 0 ? base + resto : base;
+    if (cents <= 0) continue;
+    partes.push({ dueDate: vencimentoDaFatura(card, shiftMonth(mesDoPrimeiroFechamento, i)), cents });
+  }
+  return partes;
+}
+
+/**
  * As faturas que o cartão deve ter, somando as compras feitas nele. Compra parcelada em `n` vezes vai
  * em `n` faturas seguidas, com o resto dos centavos na primeira. Cada data vem do mês do primeiro
  * fechamento mais `i` meses (nunca da fatura anterior), então um fechamento no dia 31 não derruba o dia.
@@ -80,15 +101,8 @@ export function predictedStatements(card, transactions, existing) {
   const somaPorVencimento = new Map();
   for (const t of transactions) {
     if (t.kind !== 'expense' || t.method !== 'card' || t.cardId !== card.id) continue;
-    const n = Number.isInteger(t.installments) && t.installments >= 1 && t.installments <= MAX_PARCELAS ? t.installments : 1;
-    const base = Math.floor(t.amountCents / n);
-    const resto = t.amountCents - base * n;
-    const mesDoPrimeiroFechamento = monthKey(statementFor(card, t.date).closing);
-    for (let i = 0; i < n; i += 1) {
-      const parte = i === 0 ? base + resto : base;
-      if (parte <= 0) continue;
-      const vencimento = vencimentoDaFatura(card, shiftMonth(mesDoPrimeiroFechamento, i));
-      somaPorVencimento.set(vencimento, (somaPorVencimento.get(vencimento) ?? 0) + parte);
+    for (const { dueDate, cents } of partesDaCompra(card, t)) {
+      somaPorVencimento.set(dueDate, (somaPorVencimento.get(dueDate) ?? 0) + cents);
     }
   }
 
@@ -290,6 +304,40 @@ export function removeStatement(s, billId) {
   if (!fatura || fatura.kind !== 'card_statement') return s;
   const semFatura = { ...s, bills: s.bills.filter((b) => b.id !== billId) };
   return fatura.cardId ? syncCardStatements(semFatura, fatura.cardId) : semFatura;
+}
+
+/**
+ * As compras que formam uma fatura de cartão: as que caem nela e as parceladas que passam por ela.
+ * Da mais nova para a mais antiga. Id desconhecido ou conta que não é fatura de cartão: lista vazia.
+ * @param {State} s
+ * @param {string} billId
+ * @returns {Transaction[]}
+ */
+export function statementPurchases(s, billId) {
+  const fatura = s.bills.find((b) => b.id === billId);
+  const cartao = fatura?.kind === 'card_statement' ? s.cards.find((c) => c.id === fatura.cardId) : undefined;
+  if (!fatura || !cartao) return [];
+  return cardPurchases(s, cartao.id).filter((t) => partesDaCompra(cartao, t).some((p) => p.dueDate === fatura.dueDate));
+}
+
+/**
+ * Apaga uma fatura de cartão e as compras que a formam (elas saem do "Saiu" e das outras faturas em que
+ * foram parceladas). Serve para fatura prevista, confirmada ou paga. Id desconhecido ou conta que não é
+ * fatura de cartão não muda nada.
+ * @param {State} s
+ * @param {string} billId
+ * @returns {State}
+ */
+export function removeStatementAndPurchases(s, billId) {
+  const fatura = s.bills.find((b) => b.id === billId);
+  if (!fatura || fatura.kind !== 'card_statement') return s;
+  const apagar = new Set(statementPurchases(s, billId).map((t) => t.id));
+  const semTudo = {
+    ...s,
+    transactions: s.transactions.filter((t) => !apagar.has(t.id)),
+    bills: s.bills.filter((b) => b.id !== billId),
+  };
+  return fatura.cardId ? syncCardStatements(semTudo, fatura.cardId) : semTudo;
 }
 
 /** Quantas faturas aparecem de uma vez na tela principal. */

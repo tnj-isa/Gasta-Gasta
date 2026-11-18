@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   addTransactionWithCards, buildCard, cardPurchaseFields, confirmStatement, faturasDosCartoes, MAX_PARCELAS, parseInstallments, predictedStatements,
-  removeTransactionWithCards, statementFor, syncCardStatements, transactionFromFields, updateTransactionWithCards,
+  removeStatementAndPurchases, removeTransactionWithCards, statementFor, statementPurchases, syncCardStatements, transactionFromFields,
+  updateTransactionWithCards,
 } from '../src/domain/cards.js';
 import { payBill } from '../src/domain/bills.js';
 import { addTransaction, emptyState, upsertBills, upsertCard } from '../src/domain/model.js';
@@ -667,4 +668,82 @@ test('compra no cartão leva cartão e parcelas', () => {
 test('compra no cartão sem cartão ou com parcelas ruins não é montada', () => {
   assert.throws(() => transactionFromFields(camposDeGasto({ method: 'card', installments: 2 })), /cartão/i);
   assert.throws(() => transactionFromFields(camposDeGasto({ method: 'card', cardId: 'c1', installments: 0 })), RangeError);
+});
+
+// ---- apagar uma fatura junto com as compras que a formam ----
+
+const doisCartoesComCompras = () => {
+  let s = addTransactionWithCards(comAzul(), compraNoRoxo()); // 100 em 3x no roxo: faturas 12/12, 12/01, 12/02
+  s = addTransactionWithCards(s, compraNoRoxo({ id: 't2', amountCents: 4000, date: '2026-11-07', installments: 1, note: 'Mercado' })); // 12/12
+  s = addTransactionWithCards(s, compraNoRoxo({ id: 't3', amountCents: 2000, date: '2026-12-20', installments: 1 })); // fecha 5/jan, vence 12/jan
+  s = addTransactionWithCards(s, compraNoRoxo({ id: 'a1', cardId: 'c2', amountCents: 5000, date: '2026-11-10', installments: 1 }));
+  return s;
+};
+const faturaEm = (s, vencimento, cardId = 'c1') => faturasDo(s, cardId).find((b) => b.dueDate === vencimento);
+
+test('compras de uma fatura: as que caem nela, inclusive as parceladas que passam por ela', () => {
+  const s = doisCartoesComCompras();
+  assert.deepEqual(statementPurchases(s, faturaEm(s, '2026-12-12').id).map((t) => t.id).sort(), ['t1', 't2']);
+  assert.deepEqual(statementPurchases(s, faturaEm(s, '2027-01-12').id).map((t) => t.id).sort(), ['t1', 't3']);
+  assert.deepEqual(statementPurchases(s, faturaEm(s, '2027-02-12').id).map((t) => t.id), ['t1']);
+});
+
+test('compras de uma fatura: não mistura com as de outro cartão', () => {
+  const s = doisCartoesComCompras();
+  const azul = faturasDo(s, 'c2')[0];
+  assert.deepEqual(statementPurchases(s, azul.id).map((t) => t.id), ['a1']);
+});
+
+test('compras de uma fatura que não existe, ou de um boleto, é lista vazia', () => {
+  const s = upsertBills(doisCartoesComCompras(), [{ id: 'k1', title: 'Luz', kind: 'boleto', scope: 'personal', amountCents: 100, dueDate: '2026-12-12', paidDate: null }]);
+  assert.deepEqual(statementPurchases(s, 'k1'), []);
+  assert.deepEqual(statementPurchases(s, 'sumiu'), []);
+});
+
+test('apagar a fatura com as compras: as compras somem e a fatura some, inclusive das outras faturas parceladas', () => {
+  const s0 = doisCartoesComCompras();
+  const s = removeStatementAndPurchases(s0, faturaEm(s0, '2026-12-12').id);
+  assert.deepEqual(s.transactions.map((t) => t.id).sort(), ['a1', 't3']);
+  assert.deepEqual(faturasDo(s).map((b) => [b.dueDate, b.amountCents]), [['2027-01-12', 2000]]);
+  assert.equal(faturasDo(s, 'c2').length, 1, 'o outro cartão não muda');
+});
+
+test('apagar a fatura com as compras também serve para fatura confirmada ou paga', () => {
+  const s0 = doisCartoesComCompras();
+  let s = confirmStatement(s0, faturaEm(s0, '2026-12-12').id, 95000);
+  s = removeStatementAndPurchases(s, faturaEm(s, '2026-12-12').id);
+  assert.equal(faturaEm(s, '2026-12-12'), undefined, 'a confirmada não volta como prevista');
+  assert.deepEqual(s.transactions.map((t) => t.id).sort(), ['a1', 't3']);
+  let p = payBill(s0, faturaEm(s0, '2027-02-12').id, '2027-02-10');
+  p = removeStatementAndPurchases(p, faturaEm(p, '2027-02-12').id);
+  assert.equal(faturaEm(p, '2027-02-12'), undefined);
+  assert.deepEqual(p.transactions.map((t) => t.id).sort(), ['a1', 't2', 't3']);
+});
+
+test('apagar a fatura com as compras não mexe em outra fatura confirmada ou paga que não é dela', () => {
+  const s0 = doisCartoesComCompras();
+  let s = confirmStatement(s0, faturaEm(s0, '2027-01-12').id, 77700);
+  s = removeStatementAndPurchases(s, faturaEm(s, '2026-12-12').id);
+  assert.deepEqual(faturaEm(s, '2027-01-12').amountCents, 77700);
+});
+
+test('apagar fatura sem compras por trás (confirmada sozinha) só tira a fatura', () => {
+  const inicial = comUmaCompra();
+  let s = confirmStatement(inicial, faturasDo(inicial)[0].id, 95000);
+  s = removeTransactionWithCards(s, 't1'); // a confirmada fica, sem compras
+  const antes = s.transactions.length;
+  s = removeStatementAndPurchases(s, faturasDo(s)[0].id);
+  assert.equal(s.transactions.length, antes);
+  assert.deepEqual(faturasDo(s), []);
+});
+
+test('apagar a fatura com as compras: id desconhecido ou boleto não muda nada, e o estado que recebe não muda', () => {
+  const s = doisCartoesComCompras();
+  const antes = JSON.stringify(s);
+  assert.equal(removeStatementAndPurchases(s, 'sumiu'), s);
+  assert.equal(JSON.stringify(s), antes);
+  const comBoleto = upsertBills(s, [{ id: 'k1', title: 'Luz', kind: 'boleto', scope: 'personal', amountCents: 100, dueDate: '2026-12-12', paidDate: null }]);
+  assert.equal(removeStatementAndPurchases(comBoleto, 'k1'), comBoleto);
+  removeStatementAndPurchases(s, faturaEm(s, '2026-12-12').id);
+  assert.equal(JSON.stringify(s), antes);
 });
