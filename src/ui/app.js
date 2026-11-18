@@ -1,6 +1,7 @@
 import { indexedDbStorage } from '../data/storage.js';
 import { createStore } from '../data/store.js';
 import { createAutoLock, createVault } from '../data/vault.js';
+import { syncAllCards } from '../domain/cards.js';
 import { applyRecurring } from '../domain/recurring.js';
 import { todayISO } from '../lib/dates.js';
 import { atualizacao } from './atualizacao.js';
@@ -75,6 +76,15 @@ async function criarContasFixas(cofre) {
   }
 }
 
+/** Arruma as faturas dos cartões (por exemplo, duas no mesmo mês, de versões antigas do app). Só grava se havia o que arrumar. */
+async function arrumarFaturasDosCartoes(cofre) {
+  try {
+    if (syncAllCards(cofre.getState()) !== cofre.getState()) await cofre.commit((s) => syncAllCards(s));
+  } catch {
+    // sem isto o app abre normalmente; as faturas são conferidas de novo no próximo desbloqueio
+  }
+}
+
 /** Pede ao Chrome para não apagar os dados sozinho se faltar espaço. Se ele recusar, nada muda. */
 function pedirArmazenamentoProtegido() {
   navigator.storage?.persist?.().catch(() => {});
@@ -84,6 +94,7 @@ renderers.set('lock', (container, { store: cofre, go: ir }) => {
   renderLock(container, cofre, async (estado) => {
     comecarAutoBloqueio(estado);
     pedirArmazenamentoProtegido();
+    await arrumarFaturasDosCartoes(cofre);
     await criarContasFixas(cofre);
     ir('home');
   });

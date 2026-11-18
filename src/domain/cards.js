@@ -90,8 +90,8 @@ function partesDaCompra(card, t) {
  * em `n` faturas seguidas, com o resto dos centavos na primeira. Cada data vem do mês do primeiro
  * fechamento mais `i` meses (nunca da fatura anterior), então um fechamento no dia 31 não derruba o dia.
  *
- * Uma fatura que já existe (mesmo cartão e mesmo vencimento) e que ela confirmou ou pagou volta igual,
- * sem mudança. Uma prevista antiga é trocada pela nova mas mantém o `id`, para gravar não duplicar.
+ * Uma fatura que já existe no mesmo mês (mesmo cartão) e que ela confirmou ou pagou volta igual, sem mudança,
+ * com a data que tinha. Uma prevista antiga é trocada pela nova mas mantém o `id`, para gravar não duplicar.
  * @param {Card} card
  * @param {Transaction[]} transactions
  * @param {Bill[]} existing
@@ -106,10 +106,14 @@ export function predictedStatements(card, transactions, existing) {
     }
   }
 
+  // Cada cartão tem uma fatura por mês: a corrigida ou paga segura o mês dela (com a data que tinha) e a prevista
+  // do mesmo mês não aparece de novo, mesmo que o dia do cartão tenha mudado desde então.
   const doCartao = existing.filter((b) => b.kind === 'card_statement' && b.cardId === card.id);
   return [...somaPorVencimento.keys()].sort().map((dueDate) => {
-    const antiga = doCartao.find((b) => b.dueDate === dueDate);
-    if (antiga && (antiga.confirmed === true || antiga.paidDate)) return { ...antiga };
+    const doMes = doCartao.filter((b) => monthKey(b.dueDate) === monthKey(dueDate));
+    const real = doMes.find((b) => b.confirmed === true || b.paidDate);
+    if (real) return { ...real };
+    const antiga = doMes.find((b) => b.dueDate === dueDate) ?? doMes[0];
     return {
       id: antiga?.id ?? newId(),
       title: card.name,
@@ -147,6 +151,18 @@ export function syncCardStatements(s, cardId) {
     bills: sincronizado.bills.map((b) => (
       b.kind === 'card_statement' && b.cardId === cardId && b.title !== card.name ? { ...b, title: card.name } : b)),
   };
+}
+
+/**
+ * Deixa as faturas de todos os cartões em dia com as compras (o mesmo que `syncCardStatements`, cartão por cartão).
+ * Serve para arrumar dados antigos, como duas faturas do mesmo cartão no mesmo mês. Se não há nada a arrumar,
+ * devolve o próprio `s`, para quem chama saber que não precisa gravar.
+ * @param {State} s
+ * @returns {State}
+ */
+export function syncAllCards(s) {
+  const arrumado = s.cards.reduce((acc, c) => syncCardStatements(acc, c.id), s);
+  return JSON.stringify(arrumado.bills) === JSON.stringify(s.bills) ? s : arrumado;
 }
 
 /**

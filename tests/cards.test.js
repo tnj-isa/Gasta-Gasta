@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   addTransactionWithCards, buildCard, cardPurchaseFields, confirmStatement, faturasDosCartoes, MAX_PARCELAS, parseInstallments, predictedStatements,
-  removeStatementAndPurchases, removeTransactionWithCards, statementFor, statementPurchases, syncCardStatements, transactionFromFields,
+  removeStatementAndPurchases, removeTransactionWithCards, statementFor, statementPurchases, syncAllCards, syncCardStatements, transactionFromFields,
   updateTransactionWithCards,
 } from '../src/domain/cards.js';
 import { payBill } from '../src/domain/bills.js';
@@ -299,12 +299,12 @@ test('o mesmo cartão com outro cartão ao lado: cada um mantém as suas faturas
   assert.equal(faturasDo(s, 'c2').length, 0);
 });
 
-test('mudar o dia de fechamento do cartão move as faturas previstas e mantém as confirmadas onde estavam', () => {
+test('mudar o dia de fechamento do cartão move as faturas previstas; a confirmada fica onde estava e segura o mês dela (sem fatura repetida)', () => {
   let s = addTransactionWithCards(comRoxo(), compraNoRoxo());
   s = confirmStatement(s, faturasDo(s)[0].id, 95000);
   s = syncCardStatements(upsertCard(s, { ...roxo, closingDay: 10, dueDay: 20 }), 'c1');
   assert.deepEqual(faturasDo(s).map((b) => [b.dueDate, b.amountCents, b.confirmed]),
-    [['2026-11-20', 3334, false], ['2026-12-12', 95000, true], ['2026-12-20', 3333, false], ['2027-01-20', 3333, false]]);
+    [['2026-11-20', 3334, false], ['2026-12-12', 95000, true], ['2027-01-20', 3333, false]]);
 });
 
 test('sincronizar um cartão que não existe não muda nada', () => {
@@ -746,4 +746,94 @@ test('apagar a fatura com as compras: id desconhecido ou boleto não muda nada, 
   assert.equal(removeStatementAndPurchases(comBoleto, 'k1'), comBoleto);
   removeStatementAndPurchases(s, faturaEm(s, '2026-12-12').id);
   assert.equal(JSON.stringify(s), antes);
+});
+
+// ---- uma fatura por mês em cada cartão ----
+
+const mesesDasFaturas = (s, cardId = 'c1') => faturasDo(s, cardId).map((b) => b.dueDate.slice(0, 7));
+const mudarDias = (s, closingDay, dueDay) => syncCardStatements(upsertCard(s, { ...roxo, closingDay, dueDay }), 'c1');
+
+test('mudar o dia do vencimento: a fatura paga do mês segura o mês e a prevista do mesmo mês não aparece de novo', () => {
+  let s = comUmaCompra();
+  s = payBill(s, faturasDo(s)[0].id, '2026-12-10');
+  s = mudarDias(s, 5, 20);
+  assert.deepEqual(faturasDo(s).map((b) => [b.dueDate, b.paidDate !== null]), [['2026-12-12', true], ['2027-01-20', false], ['2027-02-20', false]]);
+});
+
+test('mudar o dia do vencimento: a fatura prevista só muda de data e continua uma só (mesmo id)', () => {
+  const s0 = comUmaCompra();
+  const ids = faturasDo(s0).map((b) => b.id);
+  const s = mudarDias(s0, 5, 20);
+  assert.deepEqual(faturasDo(s).map((b) => b.dueDate), ['2026-12-20', '2027-01-20', '2027-02-20']);
+  assert.deepEqual(faturasDo(s).map((b) => b.id), ids);
+});
+
+test('dados antigos com a fatura repetida no mês: a prevista que sobra some, a confirmada fica', () => {
+  const s0 = comUmaCompra();
+  const confirmada = { ...faturasDo(s0)[0], amountCents: 95000, confirmed: true };
+  const repetida = { ...confirmada, id: 'repetida', dueDate: '2026-12-20', amountCents: 3334, confirmed: false };
+  const s = syncCardStatements(upsertBills(s0, [confirmada, repetida]), 'c1');
+  assert.deepEqual(faturasDo(s).map((b) => [b.dueDate, b.amountCents]), [['2026-12-12', 95000], ['2027-01-12', 3333], ['2027-02-12', 3333]]);
+});
+
+test('arrumar todos os cartões de uma vez tira a fatura repetida de qualquer cartão', () => {
+  const s0 = addTransactionWithCards(comAzul(), compraNoRoxo());
+  const confirmada = { ...faturasDo(s0)[0], amountCents: 95000, confirmed: true };
+  const repetida = { ...confirmada, id: 'repetida', dueDate: '2026-12-20', amountCents: 3334, confirmed: false };
+  const s = syncAllCards(upsertBills(s0, [confirmada, repetida]));
+  assert.deepEqual(mesesDasFaturas(s), ['2026-12', '2027-01', '2027-02']);
+});
+
+test('arrumar todos os cartões: se não há nada a arrumar, devolve o mesmo estado (nada é gravado à toa)', () => {
+  const s = comUmaCompra();
+  assert.equal(syncAllCards(s), s);
+  const vazio = emptyState();
+  assert.equal(syncAllCards(vazio), vazio);
+});
+
+test('sorteio: nenhuma sequência de ações deixa duas faturas do mesmo cartão no mesmo mês', () => {
+  let seed = 7;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+  const pick = (a) => a[Math.floor(rnd() * a.length)];
+  const dia = () => 1 + Math.floor(rnd() * 28);
+  const data = () => `2026-${String(9 + Math.floor(rnd() * 4)).padStart(2, '0')}-${String(1 + Math.floor(rnd() * 28)).padStart(2, '0')}`;
+  for (let rodada = 0; rodada < 400; rodada += 1) {
+    let s = emptyState();
+    const ops = [];
+    const cartoes = [];
+    for (let passo = 0; passo < 14; passo += 1) {
+      const r = rnd();
+      if (cartoes.length === 0 || r < 0.1) {
+        const c = buildCard({ name: `C${cartoes.length}`, closingDay: dia(), dueDay: dia() });
+        cartoes.push(c.id); s = syncCardStatements(upsertCard(s, c), c.id); ops.push('novoCartao');
+      } else if (r < 0.25) {
+        const id = pick(cartoes);
+        s = syncCardStatements(upsertCard(s, buildCard({ id, name: 'x', closingDay: dia(), dueDay: dia() })), id); ops.push('editaCartao');
+      } else if (r < 0.6) {
+        const id = pick(cartoes);
+        s = addTransactionWithCards(s, { id: `t${passo}`, kind: 'expense', amountCents: 1000 + Math.floor(rnd() * 90000), date: data(), scope: 'personal', categoryId: 'outros', method: 'card', cardId: id, installments: pick([1, 1, 2, 3, 6]) });
+        ops.push('compra');
+      } else if (r < 0.68 && s.transactions.length) {
+        s = removeTransactionWithCards(s, pick(s.transactions).id); ops.push('apagaCompra');
+      } else if (r < 0.78 && s.transactions.length) {
+        const t0 = pick(s.transactions);
+        s = updateTransactionWithCards(s, { ...t0, date: data(), installments: pick([1, 2, 3]) }); ops.push('editaCompra');
+      } else if (r < 0.88) {
+        const f = pick(s.bills.filter((b) => b.kind === 'card_statement'));
+        if (f) { s = confirmStatement(s, f.id, 5000 + Math.floor(rnd() * 50000)); ops.push('corrige'); }
+      } else if (r < 0.95) {
+        const f = pick(s.bills.filter((b) => b.kind === 'card_statement' && !b.paidDate));
+        if (f) { s = payBill(s, f.id, '2026-11-18'); ops.push('paga'); }
+      } else {
+        const f = pick(s.bills.filter((b) => b.kind === 'card_statement'));
+        if (f) { s = removeStatement(s, f.id); ops.push('apagaFatura'); }
+      }
+      const vistos = new Set();
+      for (const b of s.bills.filter((x) => x.kind === 'card_statement')) {
+        const k = `${b.cardId}|${b.dueDate.slice(0, 7)}`;
+        assert.ok(!vistos.has(k), `fatura repetida no mês ${k} depois de: ${ops.join(', ')}`);
+        vistos.add(k);
+      }
+    }
+  }
 });

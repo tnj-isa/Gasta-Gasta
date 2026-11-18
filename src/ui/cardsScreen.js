@@ -137,9 +137,13 @@ export function renderCards(raiz, store, { faixa, go }) {
       cartao,
       aoCancelar: fecharFormulario,
       aoSalvar: async (novo) => {
-        await store.commit((s) => syncCardStatements(upsertCard(s, novo), novo.id));
+        const depois = await store.commit((s) => syncCardStatements(upsertCard(s, novo), novo.id));
         fecharFormulario();
-        dizer(cartao ? `Pronto: ${novo.name} atualizado.` : `Pronto: ${novo.name} cadastrado. Agora, ao registrar um gasto, escolha "No cartão".`);
+        const mudouDia = cartao && (cartao.closingDay !== novo.closingDay || cartao.dueDay !== novo.dueDay);
+        const temFaturaFechada = depois.bills.some((b) => b.kind === 'card_statement' && b.cardId === novo.id && (b.confirmed === true || b.paidDate));
+        dizer(cartao
+          ? `Pronto: ${novo.name} atualizado.${mudouDia && temFaturaFechada ? ' As faturas que você já corrigiu ou pagou ficam como estavam, inclusive a data. Para mudar a data de uma, use Apagar > "Só a fatura" e corrija o valor de novo.' : ''}`
+          : `Pronto: ${novo.name} cadastrado. Agora, ao registrar um gasto, escolha "No cartão".`);
         desenhar();
       },
     }));
