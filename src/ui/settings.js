@@ -295,6 +295,16 @@ function secaoBloqueio(store, rearmar) {
     opcoes.elemento, aviso);
 }
 
+/** Atalho para a tela de contas fixas (o que se repete todo mês). */
+function secaoContasFixas(store, go) {
+  const n = store.getState().recurring.length;
+  return el('section', { class: 'config' },
+    el('h2', {}, 'Contas fixas'),
+    el('p', {}, 'Internet, aluguel, mensalidades: o que se repete todo mês e o app cria sozinho.'),
+    el('p', { class: 'config-status' }, n === 0 ? 'Nenhuma cadastrada.' : `${n} ${n === 1 ? 'cadastrada' : 'cadastradas'}.`),
+    el('button', { class: 'botao botao-largo', type: 'button', onclick: () => go('recurring', { de: 'settings' }) }, 'Contas fixas'));
+}
+
 /** Instalação e proteção do armazenamento neste aparelho. */
 function secaoAparelho() {
   const estaInstalado = typeof matchMedia === 'function' && matchMedia('(display-mode: standalone)').matches;
@@ -336,5 +346,5 @@ export function renderSettings(raiz, store, { faixa, go, rearmar, params = {} })
     go('settings', { aviso: 'Pronto: os dados da cópia foram restaurados neste aparelho.' });
   });
   if (params.aviso) raiz.append(el('p', { class: 'aviso', role: 'status' }, params.aviso));
-  raiz.append(copia.elemento, secaoCategorias(store), secaoBloqueio(store, rearmar), secaoAparelho());
+  raiz.append(copia.elemento, secaoContasFixas(store, go), secaoCategorias(store), secaoBloqueio(store, rearmar), secaoAparelho());
 }

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   emptyState, newId, addTransaction, removeTransaction, upsertBills, upsertCard,
-  upsertRule, setSettings, upsertCategory, removeCategory,
+  upsertRule, removeRule, setSettings, upsertCategory, removeCategory,
 } from '../src/domain/model.js';
 
 const bill = { id: 'b1', title: 'Água', kind: 'boleto', scope: 'personal', amountCents: 8000, dueDate: '2026-12-05', paidDate: null };
@@ -92,4 +92,15 @@ test('removeCategory também reaponta contas e regras para outros', () => {
   const s2 = removeCategory(s, 'casa');
   assert.deepEqual(s2.bills.map(b => b.categoryId), ['outros', 'lazer']);
   assert.equal(s2.recurring[0].categoryId, 'outros');
+});
+
+test('removeRule tira só a regra de mesmo id e deixa o que ela já criou', () => {
+  const r1 = { id: 'r1', title: 'Internet', kind: 'bill', amountCents: 12000, dayOfMonth: 25, scope: 'personal' };
+  const r2 = { ...r1, id: 'r2', title: 'Aluguel' };
+  const s = upsertBills(upsertRule(upsertRule(emptyState(), r1), r2), [{ ...bill, id: 'r1:2026-11' }]);
+  const depois = removeRule(s, 'r1');
+  assert.deepEqual(depois.recurring.map((r) => r.id), ['r2']);
+  assert.deepEqual(depois.bills.map((b) => b.id), ['r1:2026-11']);
+  assert.equal(removeRule(s, 'nao-existe').recurring.length, 2);
+  assert.equal(s.recurring.length, 2, 'não altera o estado recebido');
 });

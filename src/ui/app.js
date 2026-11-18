@@ -1,6 +1,8 @@
 import { indexedDbStorage } from '../data/storage.js';
 import { createStore } from '../data/store.js';
 import { createAutoLock, createVault } from '../data/vault.js';
+import { applyRecurring } from '../domain/recurring.js';
+import { todayISO } from '../lib/dates.js';
 import { atualizacao } from './atualizacao.js';
 import { renderBills } from './billsScreen.js';
 import { renderCards } from './cardsScreen.js';
@@ -9,9 +11,10 @@ import { renderEntry } from './entry.js';
 import { renderHome } from './home.js';
 import { renderLock } from './lock.js';
 import { renderPhoto } from './photo.js';
+import { renderRecurring } from './recurringScreen.js';
 import { renderSettings } from './settings.js';
 
-export const SCREENS = ['lock', 'home', 'entry', 'photo', 'bills', 'cards', 'settings'];
+export const SCREENS = ['lock', 'home', 'entry', 'photo', 'bills', 'cards', 'recurring', 'settings'];
 
 const AUTO_LOCK_PADRAO_MS = 180000;
 
@@ -60,15 +63,26 @@ function avisoDeAtualizacao() {
     el('button', { class: 'botao botao-principal', type: 'button', onclick: () => location.reload() }, 'Atualizar agora'));
 }
 
+/** Cria as contas fixas do mês (e dos meses em que o app ficou fechado). Se falhar, o app abre igual e tenta de novo na próxima vez. */
+async function criarContasFixas(cofre) {
+  try {
+    const hoje = todayISO();
+    if (applyRecurring(cofre.getState(), hoje) !== cofre.getState()) await cofre.commit((s) => applyRecurring(s, hoje));
+  } catch {
+    // sem isto o app abre normalmente; as contas fixas são conferidas de novo no próximo desbloqueio
+  }
+}
+
 /** Pede ao Chrome para não apagar os dados sozinho se faltar espaço. Se ele recusar, nada muda. */
 function pedirArmazenamentoProtegido() {
   navigator.storage?.persist?.().catch(() => {});
 }
 
 renderers.set('lock', (container, { store: cofre, go: ir }) => {
-  renderLock(container, cofre, (estado) => {
+  renderLock(container, cofre, async (estado) => {
     comecarAutoBloqueio(estado);
     pedirArmazenamentoProtegido();
+    await criarContasFixas(cofre);
     ir('home');
   });
   let mostrado = false;
@@ -89,6 +103,8 @@ renderers.set('settings', (container, api) => renderSettings(container, api.stor
 renderers.set('bills', (container, api) => renderBills(container, api.store, api));
 
 renderers.set('cards', (container, api) => renderCards(container, api.store, api));
+
+renderers.set('recurring', (container, api) => renderRecurring(container, api.store, api));
 
 renderers.set('entry', (container, { store: cofre, go: ir, faixa: topo, params }) => renderEntry(
   container, cofre, () => ir('home'), { kind: params.kind, faixa: topo }));

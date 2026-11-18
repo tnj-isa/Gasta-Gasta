@@ -233,6 +233,7 @@ h2 { margin: 0 0 var(--espaco-2); font-size: var(--fonte-titulo); font-weight: v
 .etq.boleto { background: var(--cor-etiqueta-boleto); }
 .etq.parcela { background: var(--cor-etiqueta-parcela); }
 .etq.cartao { background: var(--cor-etiqueta-cartao); }
+.etq.receita { background: var(--cor-etiqueta-receita); }
 .etq.trabalho { color: var(--cor-tinta); background: var(--cor-linha); }
 .faturas-rodape { margin-top: var(--espaco-2); background: var(--cor-papel); border-radius: var(--raio-grande); }
 .total { display: flex; justify-content: space-between; align-items: baseline; gap: var(--espaco-3); padding: var(--espaco-4) var(--espaco-4) var(--espaco-1); }
@@ -271,3 +272,8 @@ h2 { margin: 0 0 var(--espaco-2); font-size: var(--fonte-titulo); font-weight: v
 .corrigir .confirmar { flex: none; text-align: left; margin: 0; }
 .secao-cartao[hidden] { display: none; }
 .secao-cartao { display: flex; flex-direction: column; gap: var(--espaco-1); }
+
+/* contas fixas */
+.secao-fixa[hidden] { display: none; }
+.secao-fixa { display: flex; flex-direction: column; gap: var(--espaco-1); }
+.tela > .config-botoes > .botao-largo { grid-column: 1 / -1; }

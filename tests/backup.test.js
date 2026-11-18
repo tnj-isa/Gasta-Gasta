@@ -149,4 +149,10 @@ test('validateState confere faturas, cartões e contas fixas', () => {
   ruim({ cards: [{ ...card, dueDay: 0 }] }, 'dia de vencimento');
   ruim({ recurring: [{ ...rule, dayOfMonth: 40 }] }, 'dia da conta fixa');
   ruim({ recurring: [{ ...rule, kind: 'x' }] }, 'tipo da conta fixa');
+  ruim({ recurring: [{ ...rule, through: '2026-13' }] }, 'mês anotado inexistente');
+  ruim({ recurring: [{ ...rule, through: '2026-1' }] }, 'mês anotado mal escrito');
+  ruim({ recurring: [{ ...rule, through: 202611 }] }, 'mês anotado que não é texto');
+  for (const through of [undefined, null, '2026-11']) {
+    assert.doesNotThrow(() => validateState({ ...emptyState(), recurring: [{ ...rule, through }] }), `mês anotado ${through}`);
+  }
 });

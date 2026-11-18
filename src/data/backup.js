@@ -93,6 +93,7 @@ export function validateState(valor) {
     exigir(ehInteiro(r.dayOfMonth, 1, 31), `${onde}.dayOfMonth`);
     exigir(ESCOPOS.includes(r.scope), `${onde}.scope`);
     opcionalTexto(r, 'categoryId', onde);
+    exigir(r.through == null || (typeof r.through === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(r.through)), `${onde}.through`);
   });
 
   exigir(ehObjeto(s.settings), 'settings');

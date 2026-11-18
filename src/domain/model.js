@@ -9,7 +9,8 @@
  *   number?:number, of?:number, cardId?:string, confirmed?:boolean}} Bill
  * @typedef {{id:string, name:string, closingDay:number, dueDay:number}} Card
  * @typedef {{id:string, title:string, kind:'bill'|'expense'|'income', amountCents:number,
- *   dayOfMonth:number, scope:Scope, categoryId?:string}} RecurringRule
+ *   dayOfMonth:number, scope:Scope, categoryId?:string, through?:string|null}} RecurringRule
+ * (`through`: "AAAA-MM" do último mês que a regra já criou; ver recurring.js)
  * @typedef {{id:string, name:string}} Category
  * @typedef {{version:1, categories:Category[], cards:Card[], transactions:Transaction[], bills:Bill[],
  *   recurring:RecurringRule[], settings:{autoLockMs:number, lastBackup:ISODate|null,
@@ -76,6 +77,11 @@ export function upsertCard(s, c) {
 /** @returns {State} */
 export function upsertRule(s, r) {
   return { ...s, recurring: upsertById(s.recurring, r) };
+}
+
+/** Tira a regra de conta fixa; o que ela já criou continua. @returns {State} */
+export function removeRule(s, id) {
+  return { ...s, recurring: s.recurring.filter((r) => r.id !== id) };
 }
 
 /** @returns {State} */

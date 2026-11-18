@@ -268,7 +268,8 @@ export function renderBills(raiz, store, { faixa, go }) {
   raiz.append(
     el('div', { class: 'config-botoes' },
       el('button', { class: 'botao botao-principal', type: 'button', onclick: () => abrirFormulario('boleto') }, 'Novo boleto'),
-      el('button', { class: 'botao botao-principal', type: 'button', onclick: () => abrirFormulario('parcelado') }, 'Parcelamento')),
+      el('button', { class: 'botao botao-principal', type: 'button', onclick: () => abrirFormulario('parcelado') }, 'Parcelamento'),
+      el('button', { class: 'botao botao-largo', type: 'button', onclick: () => go('recurring', { de: 'bills' }) }, 'Contas fixas (todo mês)')),
     aviso, area, lista);
   desenhar();
 }
