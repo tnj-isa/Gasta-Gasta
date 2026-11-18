@@ -44,3 +44,14 @@ h2 { margin: 0 0 var(--espaco-2); font-size: var(--fonte-titulo); font-weight: v
 }
 .diagnostico p { margin: 0 0 var(--espaco-3); color: var(--cor-tinta-suave); }
 .diagnostico .diagnostico-resultado { margin: var(--espaco-3) 0 0; color: var(--cor-tinta); }
+
+.botao-destaque { margin-bottom: var(--espaco-3); color: var(--cor-acao-texto); background: var(--cor-acao); border-color: var(--cor-acao); }
+.diagnostico-acoes { display: flex; flex-wrap: wrap; gap: var(--espaco-2); }
+.diagnostico-relatorio {
+  margin: var(--espaco-3) 0;
+  font: inherit;
+  font-size: var(--fonte-pequena);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--cor-tinta);
+}

@@ -1,4 +1,5 @@
 import { mount } from './app.js';
+import './instalacao.js'; // começa a escutar o aviso de instalação do Chrome
 
 mount(document.getElementById('app'));
 
