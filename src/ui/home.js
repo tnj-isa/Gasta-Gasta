@@ -1,8 +1,10 @@
 import { shouldRemindBackup } from '../data/backup.js';
+import { contaDoGasto, unpayBill } from '../domain/bills.js';
 import { removeTransaction } from '../domain/model.js';
 import { monthlySummary, monthTransactions } from '../domain/summary.js';
 import { daysBetween, monthKey, monthLabel, shiftMonth, shortDate, todayISO } from '../lib/dates.js';
 import { formatBRL } from '../lib/money.js';
+import { cartaoFaturas } from './billsScreen.js';
 import { botaoDeIcone, el, icone } from './dom.js';
 import { alturaDoMosaico, corDaCategoria, dividirMosaico, larguraDasColunas } from './mosaico.js';
 
@@ -53,19 +55,28 @@ function mosaico(resumo, categorias) {
   return el('div', { class: 'mosaico', style: `height: ${alturaDoMosaico(colunas)}px` }, colunas.map(lado));
 }
 
+/**
+ * Um lançamento da lista, com o botão de apagar em dois passos.
+ * Gasto que veio do pagamento de uma conta não se apaga solto (a conta ficaria "paga" sem gasto):
+ * o botão vira "Desfazer pagamento", que devolve a conta para "a pagar".
+ */
 function linhaDoLancamento(t, categorias, aoApagar) {
+  const pagamento = contaDoGasto(t) !== null;
+  const rotulo = pagamento ? 'Desfazer pagamento' : 'Apagar';
   const nomeCategoria = categorias.find((c) => c.id === t.categoryId)?.name ?? 'Outros';
   const entrada = t.kind === 'income';
   const titulo = t.note || t.merchant || (entrada ? 'Entrada' : nomeCategoria);
   const detalhe = entrada ? shortDate(t.date) : `${shortDate(t.date)}, ${nomeCategoria}`;
   const acoes = el('div', { class: 'lancamento-acoes' });
   const mostrarApagar = () => acoes.replaceChildren(
-    el('button', { class: 'botao botao-discreto', type: 'button', onclick: () => aoApagar(t) }, 'Apagar'));
+    el('button', { class: 'botao botao-discreto', type: 'button', onclick: pedirConfirmacao }, rotulo));
   const pedirConfirmacao = () => acoes.replaceChildren(
-    el('span', { class: 'confirmar' }, 'Apagar este lançamento?'),
+    el('span', { class: 'confirmar' }, pagamento
+      ? 'Desfazer o pagamento? A conta volta para "a pagar" e este gasto sai.'
+      : 'Apagar este lançamento?'),
     el('button', { class: 'botao', type: 'button', onclick: mostrarApagar }, 'Cancelar'),
-    el('button', { class: 'botao botao-perigo', type: 'button', onclick: () => aoApagar(t) }, 'Apagar mesmo'));
-  acoes.append(el('button', { class: 'botao botao-discreto', type: 'button', onclick: pedirConfirmacao }, 'Apagar'));
+    el('button', { class: 'botao botao-perigo', type: 'button', onclick: () => aoApagar(t) }, pagamento ? 'Desfazer mesmo' : 'Apagar mesmo'));
+  mostrarApagar();
 
   return el('li', { class: 'lancamento' },
     el('div', { class: 'lancamento-linha' },
@@ -120,7 +131,8 @@ export function renderHome(raiz, store, { faixa, go, lock }) {
       el('strong', {}, formatBRL(resumo.netAfterWorkCents))));
 
   const apagar = async (t) => {
-    await store.commit((s) => removeTransaction(s, t.id));
+    const conta = contaDoGasto(t);
+    await store.commit((s) => (conta === null ? removeTransaction(s, t.id) : unpayBill(s, conta)));
     go('home');
   };
   const lancamentos = monthTransactions(estado.transactions, chave);
@@ -136,6 +148,7 @@ export function renderHome(raiz, store, { faixa, go, lock }) {
       resumo.byCategory.length
         ? mosaico(resumo, estado.categories)
         : el('p', { class: 'vazio' }, `Nenhum gasto em ${nomeDoMes} ainda. Toque em Gasto para registrar o primeiro.`)),
+    cartaoFaturas(estado, todayISO(), go),
     el('section', {},
       el('h2', {}, `Lançamentos de ${nomeDoMes}`),
       lancamentos.length

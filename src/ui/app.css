@@ -217,3 +217,40 @@ h2 { margin: 0 0 var(--espaco-2); font-size: var(--fonte-titulo); font-weight: v
 .foto-previa { display: block; width: 100%; max-height: 180px; object-fit: contain; background: var(--cor-papel); border-radius: var(--raio-pequeno); }
 .aviso-valor { margin: 0; color: var(--cor-tinta-suave); font-size: var(--fonte-pequena); }
 .campo-valor.lido { border-color: var(--cor-faixa); border-width: 3px; background: var(--cor-papel); }
+
+/* faturas a vencer e tela de contas */
+.faturas-secao .sub { margin: 0 0 var(--espaco-2); color: var(--cor-tinta-suave); font-size: var(--fonte-pequena); }
+.faturas { list-style: none; margin: var(--espaco-3) 0 0; padding: 0; border: 1.5px solid var(--cor-linha); border-radius: var(--raio-grande); overflow: hidden; }
+.fatura { display: grid; grid-template-columns: 1fr auto; gap: 4px var(--espaco-3); align-items: center; min-height: 72px; padding: 14px var(--espaco-4); border-bottom: 1.5px solid var(--cor-linha); }
+.fatura:last-child { border-bottom: 0; }
+.fatura .titulo { font-weight: var(--peso-forte); overflow-wrap: anywhere; }
+.fatura .preco { font-weight: var(--peso-forte); text-align: right; white-space: nowrap; }
+.fatura .linha2 { display: flex; flex-wrap: wrap; align-items: center; gap: var(--espaco-2); }
+.fatura .quando { grid-column: 2; grid-row: 2; text-align: right; font-size: var(--fonte-pequena); color: var(--cor-tinta-suave); }
+.fatura.atrasada { background: var(--cor-atrasada-fundo); }
+.fatura.atrasada .quando { color: var(--cor-atrasada); font-weight: var(--peso-forte); }
+.fatura.paga .titulo, .fatura.paga .preco { color: var(--cor-tinta-suave); font-weight: var(--peso-medio); }
+.etq.boleto { background: var(--cor-etiqueta-boleto); }
+.etq.parcela { background: var(--cor-etiqueta-parcela); }
+.etq.cartao { background: var(--cor-etiqueta-cartao); }
+.etq.trabalho { color: var(--cor-tinta); background: var(--cor-linha); }
+.faturas-rodape { margin-top: var(--espaco-2); background: var(--cor-papel); border-radius: var(--raio-grande); }
+.total { display: flex; justify-content: space-between; align-items: baseline; gap: var(--espaco-3); padding: var(--espaco-4) var(--espaco-4) var(--espaco-1); }
+.total strong { font-size: var(--fonte-valor); font-weight: var(--peso-negrito); overflow-wrap: anywhere; }
+.zerar { display: flex; justify-content: space-between; align-items: baseline; gap: var(--espaco-3); padding: var(--espaco-1) var(--espaco-4) var(--espaco-4); font-size: var(--fonte-pequena); color: var(--cor-tinta-suave); }
+.faturas-rodape .zerar:first-child { padding-top: var(--espaco-4); }
+.zerar b { color: var(--cor-tinta); font-weight: var(--peso-forte); overflow-wrap: anywhere; }
+.faturas-secao > .botao { margin-top: var(--espaco-3); }
+.contas section { margin-top: var(--espaco-5); }
+.contas > section:first-child { margin-top: var(--espaco-4); }
+.zerar-tela { padding-top: var(--espaco-3); background: var(--cor-papel); border-radius: var(--raio-grande); }
+.por-mes { margin: 0; padding: 0 var(--espaco-4) var(--espaco-3); font-size: var(--fonte-pequena); }
+.por-mes > div { display: flex; justify-content: space-between; gap: var(--espaco-3); padding: 2px 0; }
+.por-mes dt { color: var(--cor-tinta-suave); }
+.por-mes dd { margin: 0; font-weight: var(--peso-medio); }
+.fatura-acoes { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--espaco-2); margin-top: var(--espaco-1); }
+.contas-formulario .conta-form { margin: var(--espaco-4) 0 0; padding: var(--espaco-4); background: var(--cor-papel); border-radius: var(--raio-grande); }
+.contas-formulario h2 { margin-bottom: 0; }
+.botoes-form { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; margin-top: var(--espaco-2); }
+.tela > .config-botoes { grid-template-columns: 1fr 1fr; margin-top: var(--espaco-2); }
+.tela > .aviso { margin-top: var(--espaco-3); }

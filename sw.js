@@ -1,6 +1,6 @@
 // Service worker: guarda o app no celular para abrir sem internet.
 // O número depois de "gasta-" é calculado por `npm run versao` (roda sozinho no `npm test`).
-const CACHE = 'gasta-1bb761f4';
+const CACHE = 'gasta-7edfd2da';
 
 // O leitor de notas (pasta vendor/, uns 13 MB) tem cache próprio: só é baixado de novo quando ele mesmo muda.
 const CACHE_LEITOR = 'gasta-leitor-ce487a08';
@@ -17,6 +17,7 @@ const ASSETS = [
   './src/data/storage.js',
   './src/data/store.js',
   './src/data/vault.js',
+  './src/domain/bills.js',
   './src/domain/categorias.js',
   './src/domain/model.js',
   './src/domain/summary.js',
@@ -28,8 +29,10 @@ const ASSETS = [
   './src/ui/app.css',
   './src/ui/app.js',
   './src/ui/atualizacao.js',
+  './src/ui/billsScreen.js',
   './src/ui/dom.js',
   './src/ui/entry.js',
+  './src/ui/faturasTexto.js',
   './src/ui/fonts/lexend-latin-wght-normal.woff2',
   './src/ui/home.js',
   './src/ui/instalacao.js',
